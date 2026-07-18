@@ -1,4 +1,3 @@
-import sqlite3 from 'sqlite3';
 import pkg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -25,6 +24,7 @@ if (isPostgres) {
   });
 } else {
   console.log('Conectado a la base de datos SQLite local.');
+  const sqlite3 = (await import('sqlite3')).default;
   dbSqlite = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('Error al abrir la base de datos SQLite:', err.message);

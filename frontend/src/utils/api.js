@@ -20,7 +20,7 @@ const api = async (endpoint, options = {}) => {
     let errMsg = 'Ha ocurrido un error en la solicitud';
     try {
       const data = await response.json();
-      errMsg = data.message || errMsg;
+      errMsg = data.message || data.error || errMsg;
     } catch (e) {
       // Ignorar si no es JSON
     }
