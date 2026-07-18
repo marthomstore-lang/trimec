@@ -2,8 +2,10 @@ import pkg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { createRequire } from 'module';
 
 const { Pool } = pkg;
+const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +26,8 @@ if (isPostgres) {
   });
 } else {
   console.log('Conectado a la base de datos SQLite local.');
-  const sqlite3 = (await import('sqlite3')).default;
+  const libName = 'sqlite3';
+  const sqlite3 = require(libName);
   dbSqlite = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('Error al abrir la base de datos SQLite:', err.message);
