@@ -1,0 +1,18 @@
+# Dependencias y compilaciones
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+*.log
+
+# Base de datos y archivos locales
+backend/trimec.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# IDEs y sistemas operativos
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
