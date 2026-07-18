@@ -76,6 +76,14 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (activeTabAdmin === 'ots') {
+      document.title = 'Trimec - Gestión de OTs y Tarifas';
+    } else {
+      document.title = 'Trimec - Rendimiento de Personal';
+    }
+  }, [activeTabAdmin]);
+
   const handleClientSelectChange = (clientId) => {
     setSelectedClientIdToEdit(clientId);
     if (clientId === '') {

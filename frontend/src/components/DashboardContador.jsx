@@ -44,6 +44,16 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'facturacion') {
+      document.title = 'Trimec - Cobros y Facturación';
+    } else if (activeTab === 'gastos-generales') {
+      document.title = 'Trimec - Gastos Operacionales';
+    } else {
+      document.title = 'Trimec - Flujo de Caja';
+    }
+  }, [activeTab]);
+
   const handleEditBilling = (bill) => {
     setSelectedBilling({
       ot_id: bill.ot_id,

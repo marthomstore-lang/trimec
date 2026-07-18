@@ -44,6 +44,16 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'ots') {
+      document.title = 'Trimec - OTs Activas';
+    } else if (activeTab === 'hh') {
+      document.title = 'Trimec - Control de Asistencia (HH)';
+    } else {
+      document.title = 'Trimec - Gastos de Terreno';
+    }
+  }, [activeTab]);
+
   const handleRegisterHh = async (e) => {
     e.preventDefault();
     try {

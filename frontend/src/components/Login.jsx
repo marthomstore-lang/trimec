@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 
 const Login = ({ onLoginSuccess }) => {
@@ -6,6 +6,10 @@ const Login = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Trimec - Acceso al Sistema';
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

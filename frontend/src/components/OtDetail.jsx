@@ -43,6 +43,14 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     fetchOtDetail();
   }, [otId]);
 
+  useEffect(() => {
+    if (ot && ot.id) {
+      document.title = `Trimec - OT ${ot.id}`;
+    } else {
+      document.title = 'Trimec - Detalle de OT';
+    }
+  }, [ot]);
+
   const handleStatusChange = async (newStatus) => {
     try {
       await api(`/ots/${otId}`, {
