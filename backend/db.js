@@ -12,8 +12,8 @@ const __dirname = path.dirname(__filename);
 
 const dbPath = path.join(__dirname, 'trimec.db');
 
-// Detectar si estamos usando PostgreSQL (Supabase)
-const isPostgres = !!process.env.DATABASE_URL;
+// Detectar si estamos usando PostgreSQL (Supabase) o si estamos en Vercel
+const isPostgres = !!process.env.DATABASE_URL || !!process.env.VERCEL;
 
 let dbSqlite = null;
 let pgPool = null;
@@ -21,11 +21,14 @@ let pgPool = null;
 if (isPostgres) {
   console.log('Conectado a la base de datos cloud PostgreSQL (Supabase).');
   pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DATABASE_URL || '',
     ssl: { rejectUnauthorized: false }
   });
 } else {
   console.log('Conectado a la base de datos SQLite local.');
+  if (process.env.VERCEL) {
+    throw new Error('SQLite no está soportado en el entorno Vercel Serverless.');
+  }
   const libName = 'sqlite3';
   const sqlite3 = require(libName);
   dbSqlite = new sqlite3.Database(dbPath, (err) => {
