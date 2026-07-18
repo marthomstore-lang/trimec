@@ -771,7 +771,11 @@ app.delete('/api/archivos/:id', authenticate, checkRole(['admin', 'supervisor'])
   }
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Servidor local corriendo en http://localhost:${PORT}`);
-});
+// Start Server (sólo en desarrollo)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Servidor local corriendo en http://localhost:${PORT}`);
+  });
+}
+
+export default app;
