@@ -1,4 +1,7 @@
-const BASE_URL = `http://${window.location.hostname}:5000/api`;
+const isProd = import.meta.env.PROD;
+const BASE_URL = isProd 
+  ? '/api' 
+  : `http://${window.location.hostname}:5000/api`;
 
 const api = async (endpoint, options = {}) => {
   const token = localStorage.getItem('trimec_token');
