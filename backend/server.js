@@ -91,6 +91,17 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
 });
 
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    env: process.env.NODE_ENV,
+    isPostgres: !!process.env.DATABASE_URL,
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasSupabaseKey: !!process.env.SUPABASE_KEY
+  });
+});
+
 // --- CLIENTS ROUTES ---
 app.get('/api/clientes', authenticate, async (req, res) => {
   try {
