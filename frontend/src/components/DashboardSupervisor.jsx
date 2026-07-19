@@ -13,9 +13,59 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [hhRecords, setHhRecords] = useState([]);
   const [expenseRecords, setExpenseRecords] = useState([]);
 
+  // Bodega States
+  const [inventario, setInventario] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+  const [showItemModal, setShowItemModal] = useState(false);
+  const [newItem, setNewItem] = useState({ sku: '', descripcion: '', familia: '', unidad_medida: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 });
+  const [showMovModal, setShowMovModal] = useState(false);
+  const [newMov, setNewMov] = useState({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' });
+
   // Form States
   const [newHh, setNewHh] = useState({ ot_id: '', trabajador_id: '', fecha: new Date().toISOString().split('T')[0], horas_normales: 8, horas_extra: 0, ubicacion: 'Taller', actividad: '' });
   const [newExpense, setNewExpense] = useState({ ot_id: '', fecha: new Date().toISOString().split('T')[0], clasificacion: 'INSUMOS', detalle: '', cantidad: 1, valor_neto: '' });
+
+  const fetchInventario = async () => {
+    try {
+      const items = await api('/inventario');
+      setInventario(items);
+      const movs = await api('/inventario/movimientos');
+      setMovimientos(movs);
+    } catch (err) {
+      showToast('Error al cargar inventario', 'danger');
+    }
+  };
+
+  const handleSaveItem = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/inventario', {
+        method: 'POST',
+        body: JSON.stringify(newItem)
+      });
+      showToast('Consumible registrado con éxito', 'success');
+      setShowItemModal(false);
+      fetchInventario();
+    } catch (err) {
+      showToast('Error al guardar consumible', 'danger');
+    }
+  };
+
+  const handleSaveMovimiento = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/inventario/movimiento', {
+        method: 'POST',
+        body: JSON.stringify(newMov)
+      });
+      showToast('Movimiento registrado con éxito', 'success');
+      setShowMovModal(false);
+      fetchInventario();
+      fetchData();
+    } catch (err) {
+      showToast('Error al registrar movimiento', 'danger');
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -49,6 +99,9 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
       document.title = 'Trimec - OTs Activas';
     } else if (activeTab === 'hh') {
       document.title = 'Trimec - Control de Asistencia (HH)';
+    } else if (activeTab === 'bodega') {
+      document.title = 'Trimec - Bodega';
+      fetchInventario();
     } else {
       document.title = 'Trimec - Gastos de Terreno';
     }
@@ -136,7 +189,8 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
         <button className={`tab-btn ${activeTab === 'ots' ? 'active' : ''}`} onClick={() => setActiveTab('ots')}>
           📋 OTs Activas ({ots.length})
         </button>
-        <button className={`tab-btn ${activeTab === 'hh' ? 'active' : ''}`} onClick={() => setActiveTab('hh')}>
+        <button className={`tab-btn ${activeTab === 'bodega' ? 'active' : ''}`} onClick={() => setActiveTab('bodega')}>📦 Bodega</button>
+   <button className={`tab-btn ${activeTab === 'hh' ? 'active' : ''}`} onClick={() => setActiveTab('hh')}>
           ⏱️ Registro de Horas (HH)
         </button>
         <button className={`tab-btn ${activeTab === 'gastos' ? 'active' : ''}`} onClick={() => setActiveTab('gastos')}>
@@ -416,6 +470,119 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {/* MODALES BODEGA */}
+      {showItemModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>{newItem.sku ? 'Editar Artículo' : 'Registrar Nuevo Artículo'}</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowItemModal(false)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleSaveItem}>
+              <div className="form-group">
+                <label>SKU (Código Único)</label>
+                <input type="text" className="form-control" placeholder="Ej: EPP-GUANTES" value={newItem.sku} onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} disabled={!!newItem.sku} required />
+              </div>
+              <div className="form-group">
+                <label>Descripción</label>
+                <input type="text" className="form-control" placeholder="Ej: Guantes de cabritilla multifunción" value={newItem.descripcion} onChange={(e) => setNewItem({ ...newItem, descripcion: e.target.value })} required />
+              </div>
+              <div className="form-group">
+                <label>Familia</label>
+                <select className="form-control" value={newItem.familia} onChange={(e) => setNewItem({ ...newItem, familia: e.target.value })}>
+                  <option value="">-- Seleccionar Familia --</option>
+                  <option value="EPP">EPP (Protección Personal)</option>
+                  <option value="Repuesto">Repuesto</option>
+                  <option value="Consumible">Consumible</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Unidad de Medida</label>
+                <input type="text" className="form-control" placeholder="Ej: Par, Unidad, Litro, Kg" value={newItem.unidad_medida} onChange={(e) => setNewItem({ ...newItem, unidad_medida: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>Proveedor</label>
+                <input type="text" className="form-control" placeholder="Ej: Sodimac S.A." value={newItem.proveedor} onChange={(e) => setNewItem({ ...newItem, proveedor: e.target.value })} />
+              </div>
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Ubicación Física</label>
+                  <input type="text" className="form-control" placeholder="Ej: Bodega Taller" value={newItem.ubicacion} onChange={(e) => setNewItem({ ...newItem, ubicacion: e.target.value })} />
+                </div>
+                {!newItem.sku && (
+                  <div className="form-group flex-grow">
+                    <label>Stock Inicial</label>
+                    <input type="number" className="form-control" value={newItem.stock} onChange={(e) => setNewItem({ ...newItem, stock: parseFloat(e.target.value) })} required />
+                  </div>
+                )}
+                <div className="form-group flex-grow">
+                  <label>Costo Unitario ($)</label>
+                  <input type="number" className="form-control" value={newItem.valor_unitario} onChange={(e) => setNewItem({ ...newItem, valor_unitario: parseFloat(e.target.value) })} required />
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Guardar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showMovModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Registrar Movimiento de Inventario</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowMovModal(false)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleSaveMovimiento}>
+              <div className="form-group">
+                <label>Tipo Movimiento</label>
+                <select className="form-control" value={newMov.tipo} onChange={(e) => setNewMov({ ...newMov, tipo: e.target.value })}>
+                  <option value="ENTRADA">ENTRADA (Aumento de Stock / Compra)</option>
+                  <option value="SALIDA">SALIDA (Consumo de taller / Despacho)</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Seleccionar SKU Artículo</label>
+                <select className="form-control" value={newMov.sku} onChange={(e) => setNewMov({ ...newMov, sku: e.target.value })} required>
+                  <option value="">-- Seleccionar SKU --</option>
+                  {inventario.map(i => <option key={i.sku} value={i.sku}>{i.sku} - {i.descripcion} (Stock: {i.stock})</option>)}
+                </select>
+              </div>
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Cantidad</label>
+                  <input type="number" step="0.1" className="form-control" value={newMov.cantidad} onChange={(e) => setNewMov({ ...newMov, cantidad: parseFloat(e.target.value) })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Fecha Movimiento</label>
+                  <input type="date" className="form-control" value={newMov.fecha} onChange={(e) => setNewMov({ ...newMov, fecha: e.target.value })} required />
+                </div>
+              </div>
+              {newMov.tipo === 'ENTRADA' ? (
+                <>
+                  <div className="form-group">
+                    <label>Factura / Guía N°</label>
+                    <input type="text" className="form-control" value={newMov.factura_num} onChange={(e) => setNewMov({ ...newMov, factura_num: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label>Proveedor origen</label>
+                    <input type="text" className="form-control" value={newMov.proveedor_o_cliente} onChange={(e) => setNewMov({ ...newMov, proveedor_o_cliente: e.target.value })} />
+                  </div>
+                </>
+              ) : (
+                <div className="form-group">
+                  <label>Cargar a OT (Opcional)</label>
+                  <select className="form-control" value={newMov.ot_id} onChange={(e) => setNewMov({ ...newMov, ot_id: e.target.value })}>
+                    <option value="">-- Sin OT --</option>
+                    {ots.map(o => <option key={o.id} value={o.id}>OT {o.id} - {o.cliente_nombre}</option>)}
+                  </select>
+                </div>
+              )}
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Registrar Movimiento</button>
+            </form>
+          </div>
         </div>
       )}
     </div>

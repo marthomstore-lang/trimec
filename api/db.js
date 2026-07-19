@@ -97,9 +97,9 @@ export const run = (sql, params = []) => {
     }
     return pgPool.query(finalSql, params).then(res => {
       const firstRow = res.rows[0];
-      return { 
+      return {
         id: firstRow ? firstRow.id : null,
-        changes: res.rowCount 
+        changes: res.rowCount
       };
     });
   } else {
@@ -116,7 +116,7 @@ export const run = (sql, params = []) => {
 export const initDb = async () => {
   if (isPostgres) {
     console.log('Inicializando funciones de compatibilidad SQLite para PostgreSQL...');
-    
+
     // Crear la función strftime en Postgres para soportar las consultas originales del backend
     await pgPool.query(`
       CREATE OR REPLACE FUNCTION strftime(format text, val text)
@@ -147,7 +147,7 @@ export const initDb = async () => {
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
     `);
-    
+
     await pgPool.query(`
       CREATE OR REPLACE FUNCTION strftime(format text, val timestamp)
       RETURNS text AS $$
@@ -160,6 +160,30 @@ export const initDb = async () => {
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
     `);
+    await pgPool.query(`
+      ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS fecha_proyectada_presupuesto VARCHAR(255);
+    `).catch(err => console.log('Error adding fecha_proyectada_presupuesto to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE inventario ADD COLUMN IF NOT EXISTS familia VARCHAR(100);
+    `).catch(err => console.log('Error adding familia to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE inventario ADD COLUMN IF NOT EXISTS unidad_medida VARCHAR(50);
+    `).catch(err => console.log('Error adding unidad_medida to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE activos ADD COLUMN IF NOT EXISTS fecha_compra VARCHAR(255);
+    `).catch(err => console.log('Error adding fecha_compra to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE activos ADD COLUMN IF NOT EXISTS ficha_tecnica TEXT;
+    `).catch(err => console.log('Error adding ficha_tecnica to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE facturacion ADD COLUMN IF NOT EXISTS fecha_vencimiento VARCHAR(255);
+    `).catch(err => console.log('Error adding fecha_vencimiento to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE gastos_generales ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(50) DEFAULT 'Pagado';
+    `).catch(err => console.log('Error adding estado_pago to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE gastos_generales ADD COLUMN IF NOT EXISTS fecha_vencimiento VARCHAR(255);
+    `).catch(err => console.log('Error adding fecha_vencimiento to postgres:', err.message));
   }
 
   // Migraciones automáticas sólo en SQLite (en Supabase la BD se inicia de cero o vía script)
@@ -173,7 +197,7 @@ export const initDb = async () => {
           rebuild = true;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (rebuild) {
       console.log('Migración: Reconstruyendo tablas locales...');
@@ -193,8 +217,12 @@ export const initDb = async () => {
         if (!hasHh) {
           await run("ALTER TABLE ordenes_trabajo ADD COLUMN hh_presupuestadas REAL DEFAULT 0.0");
         }
+        const hasFechaProj = otCols.some(c => c.name === 'fecha_proyectada_presupuesto');
+        if (!hasFechaProj) {
+          await run("ALTER TABLE ordenes_trabajo ADD COLUMN fecha_proyectada_presupuesto TEXT");
+        }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const wCols = await query("PRAGMA table_info(trabajadores)");
@@ -204,7 +232,59 @@ export const initDb = async () => {
           await run("ALTER TABLE trabajadores ADD COLUMN horas_mensuales_esperadas REAL DEFAULT 180.0");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
+
+    try {
+      const invCols = await query("PRAGMA table_info(inventario)");
+      if (invCols && invCols.length > 0) {
+        const hasFamilia = invCols.some(c => c.name === 'familia');
+        if (!hasFamilia) {
+          await run("ALTER TABLE inventario ADD COLUMN familia TEXT");
+        }
+        const hasUnidad = invCols.some(c => c.name === 'unidad_medida');
+        if (!hasUnidad) {
+          await run("ALTER TABLE inventario ADD COLUMN unidad_medida TEXT");
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const actCols = await query("PRAGMA table_info(activos)");
+      if (actCols && actCols.length > 0) {
+        const hasFecha = actCols.some(c => c.name === 'fecha_compra');
+        if (!hasFecha) {
+          await run("ALTER TABLE activos ADD COLUMN fecha_compra TEXT");
+        }
+        const hasFicha = actCols.some(c => c.name === 'ficha_tecnica');
+        if (!hasFicha) {
+          await run("ALTER TABLE activos ADD COLUMN ficha_tecnica TEXT");
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const factCols = await query("PRAGMA table_info(facturacion)");
+      if (factCols && factCols.length > 0) {
+        const hasVenc = factCols.some(c => c.name === 'fecha_vencimiento');
+        if (!hasVenc) {
+          await run("ALTER TABLE facturacion ADD COLUMN fecha_vencimiento TEXT");
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const ggCols = await query("PRAGMA table_info(gastos_generales)");
+      if (ggCols && ggCols.length > 0) {
+        const hasEstado = ggCols.some(c => c.name === 'estado_pago');
+        if (!hasEstado) {
+          await run("ALTER TABLE gastos_generales ADD COLUMN estado_pago TEXT DEFAULT 'Pagado'");
+        }
+        const hasVenc = ggCols.some(c => c.name === 'fecha_vencimiento');
+        if (!hasVenc) {
+          await run("ALTER TABLE gastos_generales ADD COLUMN fecha_vencimiento TEXT");
+        }
+      }
+    } catch (e) { }
   }
 
   // DDLs unificados (se traducen en caliente para Postgres)
@@ -255,7 +335,8 @@ export const initDb = async () => {
       fecha_aprobacion TEXT,
       fecha_entrega TEXT,
       monto_neto_presupuesto REAL DEFAULT 0.0,
-      hh_presupuestadas REAL DEFAULT 0.0
+      hh_presupuestadas REAL DEFAULT 0.0,
+      fecha_proyectada_presupuesto TEXT
     )
   `));
 
@@ -295,7 +376,8 @@ export const initDb = async () => {
       nro_hes TEXT,
       nro_factura TEXT,
       fecha_factura TEXT,
-      estado_pago TEXT NOT NULL DEFAULT 'Pendiente' CHECK(estado_pago IN ('Pendiente', 'Pagado', 'Anulado'))
+      estado_pago TEXT NOT NULL DEFAULT 'Pendiente' CHECK(estado_pago IN ('Pendiente', 'Pagado', 'Anulado')),
+      fecha_vencimiento TEXT
     )
   `));
 
@@ -305,7 +387,9 @@ export const initDb = async () => {
       fecha TEXT NOT NULL,
       familia TEXT NOT NULL,
       detalle TEXT NOT NULL,
-      valor_total REAL NOT NULL DEFAULT 0.0
+      valor_total REAL NOT NULL DEFAULT 0.0,
+      estado_pago TEXT DEFAULT 'Pagado',
+      fecha_vencimiento TEXT
     )
   `));
 
@@ -328,7 +412,9 @@ export const initDb = async () => {
       fecha_ultimo_pedido TEXT,
       stock REAL DEFAULT 0.0,
       ubicacion TEXT,
-      valor_unitario REAL DEFAULT 0.0
+      valor_unitario REAL DEFAULT 0.0,
+      familia TEXT,
+      unidad_medida TEXT
     )
   `));
 
@@ -361,7 +447,9 @@ export const initDb = async () => {
       modelo TEXT,
       observaciones TEXT,
       asignado_a_trabajador_id INTEGER,
-      asignado_a_ot_id TEXT
+      asignado_a_ot_id TEXT,
+      fecha_compra TEXT,
+      ficha_tecnica TEXT
     )
   `));
 

@@ -12,6 +12,34 @@ const Login = ({ onLoginSuccess }) => {
     document.title = 'Trimec - Acceso al Sistema';
   }, []);
 
+  const getFriendlyErrorMessage = (msg) => {
+    if (!msg) return 'Error al iniciar sesión';
+    const msgLower = msg.toLowerCase();
+    
+    // Caso 1: Sin conexión a internet
+    if (
+      msgLower.includes('enotfound') || 
+      msgLower.includes('failed to fetch') || 
+      msgLower.includes('fetch failed') || 
+      msgLower.includes('network error')
+    ) {
+      return 'No hay conexión a internet. Por favor, verifica tu red e inténtalo de nuevo.';
+    }
+    
+    // Caso 2: Error al conectar a la base de datos
+    if (
+      msgLower.includes('supabase') || 
+      msgLower.includes('econnrefused') || 
+      msgLower.includes('database') || 
+      msgLower.includes('connection') || 
+      msgLower.includes('timeout')
+    ) {
+      return 'No se pudo establecer conexión con la base de datos. Por favor, verifica si el servicio de base de datos está activo.';
+    }
+    
+    return msg;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -26,7 +54,7 @@ const Login = ({ onLoginSuccess }) => {
       localStorage.setItem('trimec_user', JSON.stringify(data.user));
       onLoginSuccess(data.user);
     } catch (err) {
-      setError(err.message || 'Error al iniciar sesión');
+      setError(getFriendlyErrorMessage(err.message));
     } finally {
       setLoading(false);
     }
@@ -44,7 +72,7 @@ const Login = ({ onLoginSuccess }) => {
       localStorage.setItem('trimec_user', JSON.stringify(data.user));
       onLoginSuccess(data.user);
     } catch (err) {
-      setError(err.message || 'Error al iniciar sesión');
+      setError(getFriendlyErrorMessage(err.message));
     } finally {
       setLoading(false);
     }

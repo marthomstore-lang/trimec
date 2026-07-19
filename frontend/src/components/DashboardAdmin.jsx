@@ -3,6 +3,7 @@ import api from '../utils/api';
 
 const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
+  const [filtroEstadoOt, setFiltroEstadoOt] = useState('Todas');
   const [clients, setClients] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [inventario, setInventario] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
   const [showItemModal, setShowItemModal] = useState(false);
-  const [newItem, setNewItem] = useState({ sku: '', descripcion: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 });
+  const [newItem, setNewItem] = useState({ sku: '', descripcion: '', familia: '', unidad_medida: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 });
   const [showMovModal, setShowMovModal] = useState(false);
   const [newMov, setNewMov] = useState({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' });
 
@@ -395,7 +396,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       document.title = 'Trimec - Rendimiento de Personal';
       fetchPerformance();
     } else if (activeTabAdmin === 'inventario') {
-      document.title = 'Trimec - Inventario de Consumibles';
+      document.title = 'Trimec - Bodega';
       fetchInventario();
     } else if (activeTabAdmin === 'activos') {
       document.title = 'Trimec - Activos y Herramientas';
@@ -600,7 +601,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
           📊 Rendimiento Personal
         </button>
         <button className={`tab-btn ${activeTabAdmin === 'inventario' ? 'active' : ''}`} onClick={() => setActiveTabAdmin('inventario')}>
-          📦 Inventario Consumibles
+          📦 Bodega
         </button>
         <button className={`tab-btn ${activeTabAdmin === 'activos' ? 'active' : ''}`} onClick={() => setActiveTabAdmin('activos')}>
           ⚙️ Equipos y Activos
@@ -806,13 +807,14 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
           )}
 
           {/* TAB 3: INVENTARIO */}
+          {/* TAB 3: BODEGA */}
           {activeTabAdmin === 'inventario' && (
             <div className="dashboard-layout">
               {/* Inventario List */}
               <div className="panel-card">
                 <div className="panel-header" style={{ marginBottom: '1.5rem' }}>
-                  <div>
-                    <h3>Inventario de Consumibles y Repuestos</h3>
+                  <div className="tab-header">
+                    <h3>Bodega</h3>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                       Existencias y costos unitarios registrados
                     </span>

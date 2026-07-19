@@ -18,7 +18,9 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
     fecha: new Date().toISOString().split('T')[0],
     familia: 'Arriendo',
     detalle: '',
-    valor_total: ''
+    valor_total: '',
+    estado_pago: 'Pagado',
+    fecha_vencimiento: ''
   });
 
   const fetchData = async () => {
@@ -62,7 +64,8 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
       nro_hes: bill.nro_hes || '',
       nro_factura: bill.nro_factura || '',
       fecha_factura: bill.fecha_factura || '',
-      estado_pago: bill.estado_pago || 'Pendiente'
+      estado_pago: bill.estado_pago || 'Pendiente',
+      fecha_vencimiento: bill.fecha_vencimiento || ''
     });
     setShowEditBillingModal(true);
   };
@@ -90,7 +93,9 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
         method: 'POST',
         body: JSON.stringify({
           ...newGeneralExpense,
-          valor_total: parseFloat(newGeneralExpense.valor_total)
+          valor_total: parseFloat(newGeneralExpense.valor_total),
+          estado_pago: newGeneralExpense.estado_pago,
+          fecha_vencimiento: newGeneralExpense.fecha_vencimiento || null
         })
       });
       showToast('Gasto fijo registrado con éxito', 'success');
@@ -98,7 +103,9 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
         fecha: new Date().toISOString().split('T')[0],
         familia: 'Arriendo',
         detalle: '',
-        valor_total: ''
+        valor_total: '',
+        estado_pago: 'Pagado',
+        fecha_vencimiento: ''
       });
       fetchData();
     } catch (err) {
@@ -123,6 +130,39 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
     (bill.nro_oc && bill.nro_oc.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (bill.nro_factura && bill.nro_factura.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  // Calcular proyecciones de dineros futuros y pagos por ejecutar por mes
+  const getProyecciones = () => {
+    const proyecciones = {};
+
+    // 1. Cobros futuros (dineros futuros)
+    billingList.forEach(bill => {
+      if (bill.estado_pago === 'Pendiente' && bill.monto_neto_presupuesto) {
+        const fecha = bill.fecha_vencimiento || bill.fecha_factura || new Date().toISOString().split('T')[0];
+        const mes = fecha.substring(0, 7); // YYYY-MM
+        if (!proyecciones[mes]) {
+          proyecciones[mes] = { mes, ingresosFuturos: 0, egresosFuturos: 0 };
+        }
+        proyecciones[mes].ingresosFuturos += parseFloat(bill.monto_neto_presupuesto);
+      }
+    });
+
+    // 2. Pagos futuros (pagos por ejecutar)
+    generalExpenses.forEach(exp => {
+      if (exp.estado_pago === 'Pendiente' && exp.valor_total) {
+        const fecha = exp.fecha_vencimiento || exp.fecha;
+        const mes = fecha.substring(0, 7); // YYYY-MM
+        if (!proyecciones[mes]) {
+          proyecciones[mes] = { mes, ingresosFuturos: 0, egresosFuturos: 0 };
+        }
+        proyecciones[mes].egresosFuturos += parseFloat(exp.valor_total);
+      }
+    });
+
+    return Object.values(proyecciones).sort((a, b) => a.mes.localeCompare(b.mes));
+  };
+
+  const proyeccionesList = getProyecciones();
 
   return (
     <div className="dashboard-container">
@@ -260,6 +300,20 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
                     </div>
                   </div>
 
+                  <div className="flex-row-gap">
+                    <div className="form-group flex-grow">
+                      <label>Estado de Pago</label>
+                      <select className="form-control" value={newGeneralExpense.estado_pago} onChange={(e) => setNewGeneralExpense({ ...newGeneralExpense, estado_pago: e.target.value })}>
+                        <option value="Pagado">Pagado</option>
+                        <option value="Pendiente">Pendiente</option>
+                      </select>
+                    </div>
+                    <div className="form-group flex-grow">
+                      <label>Fecha Vencimiento (Si está Pendiente)</label>
+                      <input type="date" className="form-control" value={newGeneralExpense.fecha_vencimiento} onChange={(e) => setNewGeneralExpense({ ...newGeneralExpense, fecha_vencimiento: e.target.value })} />
+                    </div>
+                  </div>
+
                   <div className="form-group">
                     <label>Detalle / Glosa del Egreso</label>
                     <textarea className="form-control" rows="2" placeholder="Ej: Pago de arriendo del taller correspondiente a Julio 2026" value={newGeneralExpense.detalle} onChange={(e) => setNewGeneralExpense({ ...newGeneralExpense, detalle: e.target.value })} required></textarea>
@@ -316,6 +370,49 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
             <div className="panel-card">
               <div className="panel-header">
                 <h3>Balance Financiero de Caja por Mes</h3>
+              </div>
+              
+
+              {/* GRÁFICO DE PROYECCIONES */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2.5rem', background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '1rem', border: '1px solid var(--panel-border)' }}>
+                <h4 style={{ margin: 0, color: 'var(--primary)' }}>Proyecciones de Caja: Dineros Futuros vs Pagos por Ejecutar</h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Muestra el total de dinero pendiente por cobrar de OTs facturadas y egresos fijos registrados como pendientes agrupados por fecha de vencimiento.</p>
+                {proyeccionesList.length === 0 ? (
+                  <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.9rem', margin: '1rem 0 0 0' }}>No hay cobros ni egresos pendientes proyectados (marca cobros/pagos como "Pendiente" y asigna una fecha de vencimiento para visualizarlos).</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+                    {proyeccionesList.map(proj => {
+                      const maxVal = Math.max(...proyeccionesList.map(p => Math.max(p.ingresosFuturos, p.egresosFuturos)));
+                      const ingPct = maxVal > 0 ? (proj.ingresosFuturos / maxVal) * 100 : 0;
+                      const egrPct = maxVal > 0 ? (proj.egresosFuturos / maxVal) * 100 : 0;
+                      return (
+                        <div key={proj.mes} style={{ display: 'grid', gridTemplateColumns: '90px 1fr', alignItems: 'center', gap: '1.5rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{proj.mes}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            {/* Ingresos Futuros Bar */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ width: `${ingPct}%`, minWidth: proj.ingresosFuturos > 0 ? '6px' : '0px', height: '14px', background: 'linear-gradient(90deg, #10b981, #34d399)', borderRadius: '4px', transition: 'width 0.3s' }}></div>
+                              {proj.ingresosFuturos > 0 ? (
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#34d399' }}>Cobro pendiente: +${Math.round(proj.ingresosFuturos).toLocaleString('es-CL')}</span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin cobros proyectados</span>
+                              )}
+                            </div>
+                            {/* Egresos Futuros Bar */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ width: `${egrPct}%`, minWidth: proj.egresosFuturos > 0 ? '6px' : '0px', height: '14px', background: 'linear-gradient(90deg, #ef4444, #f87171)', borderRadius: '4px', transition: 'width 0.3s' }}></div>
+                              {proj.egresosFuturos > 0 ? (
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f87171' }}>Pago por ejecutar: -${Math.round(proj.egresosFuturos).toLocaleString('es-CL')}</span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin pagos proyectados</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
                 Cruce de ingresos reales (OTs facturadas y cobradas) contra egresos fijos (arriendos, cuentas) y egresos de taller.
@@ -407,6 +504,11 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
                   <label>Fecha Emisión Factura</label>
                   <input type="date" className="form-control" value={selectedBilling.fecha_factura} onChange={(e) => setSelectedBilling({ ...selectedBilling, fecha_factura: e.target.value })} />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Fecha de Vencimiento de Factura (Dineros Futuros)</label>
+                <input type="date" className="form-control" value={selectedBilling.fecha_vencimiento || ''} onChange={(e) => setSelectedBilling({ ...selectedBilling, fecha_vencimiento: e.target.value })} />
               </div>
 
               <div className="form-group">

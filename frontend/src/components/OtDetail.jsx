@@ -327,7 +327,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          {['admin', 'supervisor', 'contador'].includes(userRole) && (
+          {userRole === 'admin' && (
             <button className="btn btn-secondary" onClick={() => setIsEditing(!isEditing)}>
               {isEditing ? 'Cancelar Edición' : '⚙️ Editar OT'}
             </button>
@@ -346,7 +346,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
             const isActive = estadosList.indexOf(ot.estado) >= i;
             const isCurrent = ot.estado === est;
             return (
-              <div key={est} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2, flex: 1, minWidth: '80px', cursor: 'pointer' }} onClick={() => handleStatusChange(est)}>
+              <div key={est} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2, flex: 1, minWidth: '80px', cursor: userRole === 'admin' ? 'pointer' : 'default' }} onClick={() => userRole === 'admin' ? handleStatusChange(est) : showToast('Solo el Administrador puede cambiar el estado de la OT', 'danger')}>
                 <div style={{
                   width: '24px',
                   height: '24px',
@@ -410,6 +410,10 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
               <div className="form-group flex-grow">
                 <label>Fecha Estimada de Entrega</label>
                 <input type="date" className="form-control" value={editForm.fecha_entrega || ''} onChange={(e) => setEditForm({ ...editForm, fecha_entrega: e.target.value })} />
+              </div>
+              <div className="form-group flex-grow">
+                <label>Fecha Proyectada Presupuesto</label>
+                <input type="date" className="form-control" value={editForm.fecha_proyectada_presupuesto || ''} onChange={(e) => setEditForm({ ...editForm, fecha_proyectada_presupuesto: e.target.value })} />
               </div>
             </div>
 

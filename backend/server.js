@@ -275,32 +275,31 @@ app.delete('/api/trabajadores/:id', authenticate, checkRole(['admin']), async (r
 // --- OTS ROUTES ---
 app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
   try {
-    const currentMonth = new Date().getMonth() + 1; // 1 - 12
-    const prefixMonthStr = currentMonth.toString();
-    const ots = await query('SELECT id FROM ordenes_trabajo');
-    let maxSeq = 0;
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(-2);
+    const datePrefix = `${dd}${mm}${yy}`; // Formato DDMMYY
+
+    const ots = await query(`SELECT id FROM ordenes_trabajo WHERE id LIKE '%${datePrefix}.%'`);
     
+    let maxSeq = 0;
     if (ots && ots.length > 0) {
       for (const ot of ots) {
         const parts = ot.id.toString().split('-');
-        const suffix = parts[parts.length - 1]; // "702", "517", etc.
-        
-        if (/^\d+$/.test(suffix)) {
-          const expectedLen = prefixMonthStr.length + 2; // ej: 1 + 2 = 3 para julio (7), 2 + 2 = 4 para diciembre (12)
-          if (suffix.length === expectedLen && suffix.startsWith(prefixMonthStr)) {
-            const seqStr = suffix.substring(prefixMonthStr.length);
-            const seqVal = parseInt(seqStr, 10);
-            if (seqVal > maxSeq) {
-              maxSeq = seqVal;
-            }
+        const suffix = parts[parts.length - 1]; // e.g. "260701.1"
+        const subparts = suffix.split('.');
+        if (subparts.length === 2 && subparts[0] === datePrefix) {
+          const seqVal = parseInt(subparts[1], 10);
+          if (!isNaN(seqVal) && seqVal > maxSeq) {
+            maxSeq = seqVal;
           }
         }
       }
     }
     
     const nextSeq = maxSeq + 1;
-    const nextSeqStr = nextSeq.toString().padStart(2, '0');
-    const finalNumber = `${prefixMonthStr}${nextSeqStr}`; // "701", "702", etc.
+    const finalNumber = `${datePrefix}.${nextSeq}`; 
     
     res.json({ siguiente_numero: finalNumber });
   } catch (error) {
@@ -420,13 +419,13 @@ app.get('/api/ots/:id', authenticate, async (req, res) => {
 });
 
 app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas } = req.body;
+  const { id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   try {
     await run(
       `INSERT INTO ordenes_trabajo 
-      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0]
+      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0, fecha_proyectada_presupuesto]
     );
 
     // Crear registro vacío de facturación
@@ -438,16 +437,16 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
   }
 });
 
-app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor', 'contador']), async (req, res) => {
+app.put('/api/ots/:id', authenticate, checkRole(['admin']), async (req, res) => {
   const { id } = req.params;
-  const { cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas } = req.body;
+  const { cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   
   try {
     await run(
       `UPDATE ordenes_trabajo 
-       SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?
+       SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
        WHERE id = ?`,
-      [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, id]
+      [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto, id]
     );
     res.json({ message: 'OT actualizada con éxito' });
   } catch (error) {

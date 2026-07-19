@@ -141,6 +141,21 @@ app.put('/api/clientes/:id', authenticate, checkRole(['admin']), async (req, res
   }
 });
 
+app.delete('/api/clientes/:id', authenticate, checkRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const otsAsociadas = await get('SELECT COUNT(*) as count FROM ordenes_trabajo WHERE cliente_id = ?', [id]);
+    if (otsAsociadas && parseInt(otsAsociadas.count, 10) > 0) {
+      return res.status(400).json({ error: 'No se puede eliminar el cliente porque tiene Órdenes de Trabajo asociadas.' });
+    }
+    await run('DELETE FROM clientes WHERE id = ?', [id]);
+    res.json({ message: 'Cliente eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 // --- USUARIOS CRUD ENDPOINTS ---
 
@@ -271,35 +286,33 @@ app.delete('/api/trabajadores/:id', authenticate, checkRole(['admin']), async (r
 });
 
 
-// --- OTS ROUTES ---
 app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
   try {
-    const currentMonth = new Date().getMonth() + 1; // 1 - 12
-    const prefixMonthStr = currentMonth.toString();
-    const ots = await query('SELECT id FROM ordenes_trabajo');
-    let maxSeq = 0;
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(-2);
+    const datePrefix = `${dd}${mm}${yy}`; // Formato DDMMYY
+
+    const ots = await query(`SELECT id FROM ordenes_trabajo WHERE id LIKE '%${datePrefix}.%'`);
     
+    let maxSeq = 0;
     if (ots && ots.length > 0) {
       for (const ot of ots) {
         const parts = ot.id.toString().split('-');
-        const suffix = parts[parts.length - 1]; // "702", "517", etc.
-        
-        if (/^\d+$/.test(suffix)) {
-          const expectedLen = prefixMonthStr.length + 2; // ej: 1 + 2 = 3 para julio (7), 2 + 2 = 4 para diciembre (12)
-          if (suffix.length === expectedLen && suffix.startsWith(prefixMonthStr)) {
-            const seqStr = suffix.substring(prefixMonthStr.length);
-            const seqVal = parseInt(seqStr, 10);
-            if (seqVal > maxSeq) {
-              maxSeq = seqVal;
-            }
+        const suffix = parts[parts.length - 1]; // e.g. "260701.1"
+        const subparts = suffix.split('.');
+        if (subparts.length === 2 && subparts[0] === datePrefix) {
+          const seqVal = parseInt(subparts[1], 10);
+          if (!isNaN(seqVal) && seqVal > maxSeq) {
+            maxSeq = seqVal;
           }
         }
       }
     }
     
     const nextSeq = maxSeq + 1;
-    const nextSeqStr = nextSeq.toString().padStart(2, '0');
-    const finalNumber = `${prefixMonthStr}${nextSeqStr}`; // "701", "702", etc.
+    const finalNumber = `${datePrefix}.${nextSeq}`; 
     
     res.json({ siguiente_numero: finalNumber });
   } catch (error) {
@@ -366,6 +379,42 @@ app.get('/api/ots', authenticate, async (req, res) => {
   }
 });
 
+app.get('/api/ots/next-id', authenticate, async (req, res) => {
+  const { fecha } = req.query;
+  const targetDate = fecha || new Date().toISOString().split('T')[0];
+  const parts = targetDate.split('-');
+  if (parts.length !== 3) {
+    return res.status(400).json({ error: 'Fecha inválida' });
+  }
+  const yy = parts[0].substring(2);
+  const mm = parts[1];
+  const dd = parts[2];
+  const prefix = `${yy}${mm}${dd}`;
+  
+  try {
+    const existing = await query(
+      `SELECT id FROM ordenes_trabajo WHERE id LIKE ?`,
+      [`${prefix}.%`]
+    );
+    
+    let maxCorrelativo = 0;
+    existing.forEach(ot => {
+      const idParts = ot.id.split('.');
+      if (idParts.length === 2) {
+        const corr = parseInt(idParts[1], 10);
+        if (!isNaN(corr) && corr > maxCorrelativo) {
+          maxCorrelativo = corr;
+        }
+      }
+    });
+    
+    const nextId = `${prefix}.${maxCorrelativo + 1}`;
+    res.json({ nextId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/ots/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
@@ -419,13 +468,13 @@ app.get('/api/ots/:id', authenticate, async (req, res) => {
 });
 
 app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas } = req.body;
+  const { id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   try {
     await run(
       `INSERT INTO ordenes_trabajo 
-      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0]
+      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0, fecha_proyectada_presupuesto || null]
     );
 
     // Crear registro vacío de facturación
@@ -437,16 +486,16 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
   }
 });
 
-app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor', 'contador']), async (req, res) => {
+app.put('/api/ots/:id', authenticate, checkRole(['admin']), async (req, res) => {
   const { id } = req.params;
-  const { cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas } = req.body;
+  const { cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   
   try {
     await run(
       `UPDATE ordenes_trabajo 
-       SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?
+       SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
        WHERE id = ?`,
-      [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, id]
+      [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id]
     );
     res.json({ message: 'OT actualizada con éxito' });
   } catch (error) {
@@ -569,6 +618,7 @@ app.get('/api/facturacion', authenticate, checkRole(['admin', 'contador']), asyn
       FROM facturacion f
       JOIN ordenes_trabajo o ON f.ot_id = o.id
       JOIN clientes c ON o.cliente_id = c.id
+      WHERE o.estado = 'Facturada'
       ORDER BY f.id DESC
     `);
     res.json(factRecords);
@@ -579,13 +629,13 @@ app.get('/api/facturacion', authenticate, checkRole(['admin', 'contador']), asyn
 
 app.put('/api/facturacion/:ot_id', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
   const { ot_id } = req.params;
-  const { nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago } = req.body;
+  const { nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago, fecha_vencimiento } = req.body;
   try {
     await run(
       `UPDATE facturacion 
-       SET nro_oc = ?, fecha_oc = ?, nro_hes = ?, nro_factura = ?, fecha_factura = ?, estado_pago = ? 
+       SET nro_oc = ?, fecha_oc = ?, nro_hes = ?, nro_factura = ?, fecha_factura = ?, estado_pago = ?, fecha_vencimiento = ? 
        WHERE ot_id = ?`,
-      [nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago || 'Pendiente', ot_id]
+      [nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago || 'Pendiente', fecha_vencimiento || null, ot_id]
     );
     res.json({ message: 'Datos de facturación actualizados' });
   } catch (error) {
@@ -605,11 +655,11 @@ app.get('/api/finanzas/gastos-generales', authenticate, checkRole(['admin', 'con
 });
 
 app.post('/api/finanzas/gastos-generales', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
-  const { fecha, familia, detalle, valor_total } = req.body;
+  const { fecha, familia, detalle, valor_total, estado_pago, fecha_vencimiento } = req.body;
   try {
     const result = await run(
-      'INSERT INTO gastos_generales (fecha, familia, detalle, valor_total) VALUES (?, ?, ?, ?)',
-      [fecha, familia, detalle, valor_total || 0.0]
+      'INSERT INTO gastos_generales (fecha, familia, detalle, valor_total, estado_pago, fecha_vencimiento) VALUES (?, ?, ?, ?, ?, ?)',
+      [fecha, familia, detalle, valor_total || 0.0, estado_pago || 'Pagado', fecha_vencimiento || null]
     );
     res.status(201).json({ id: result.id, message: 'Gasto general registrado' });
   } catch (error) {
@@ -880,7 +930,7 @@ app.get('/api/inventario', authenticate, async (req, res) => {
 });
 
 app.post('/api/inventario', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario } = req.body;
+  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida } = req.body;
   if (!sku || !descripcion) {
     return res.status(400).json({ message: 'SKU y descripción son obligatorios' });
   }
@@ -889,16 +939,16 @@ app.post('/api/inventario', authenticate, checkRole(['admin', 'supervisor']), as
     if (existing) {
       await run(`
         UPDATE inventario 
-        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?
+        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?, familia = ?, unidad_medida = ?
         WHERE sku = ?
-      `, [descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0, sku]);
+      `, [descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0, familia || null, unidad_medida || null, sku]);
     } else {
       await run(`
-        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [sku, descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0]);
+        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [sku, descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0, familia || null, unidad_medida || null]);
     }
-    res.json({ sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario });
+    res.json({ sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -977,15 +1027,15 @@ app.get('/api/activos', authenticate, async (req, res) => {
 });
 
 app.post('/api/activos', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones } = req.body;
+  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones, fecha_compra, ficha_tecnica } = req.body;
   if (!nombre) {
     return res.status(400).json({ message: 'El nombre es obligatorio' });
   }
   try {
     await run(`
-      INSERT INTO activos (nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones]);
+      INSERT INTO activos (nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones, fecha_compra, ficha_tecnica)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones, fecha_compra || null, ficha_tecnica || null]);
     res.status(201).json({ message: 'Activo creado' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -994,13 +1044,13 @@ app.post('/api/activos', authenticate, checkRole(['admin', 'supervisor']), async
 
 app.put('/api/activos/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
-  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones, asignado_a_trabajador_id, asignado_a_ot_id } = req.body;
+  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones, asignado_a_trabajador_id, asignado_a_ot_id, fecha_compra, ficha_tecnica } = req.body;
   try {
     await run(`
       UPDATE activos 
-      SET nombre = ?, descripcion = ?, tipo = ?, ubicacion = ?, proveedor = ?, valor_compra = ?, garantia_vencimiento = ?, condicion = ?, cantidad = ?, modelo = ?, observaciones = ?, asignado_a_trabajador_id = ?, asignado_a_ot_id = ?
+      SET nombre = ?, descripcion = ?, tipo = ?, ubicacion = ?, proveedor = ?, valor_compra = ?, garantia_vencimiento = ?, condicion = ?, cantidad = ?, modelo = ?, observaciones = ?, asignado_a_trabajador_id = ?, asignado_a_ot_id = ?, fecha_compra = ?, ficha_tecnica = ?
       WHERE id = ?
-    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones, asignado_a_trabajador_id ? parseInt(asignado_a_trabajador_id) : null, asignado_a_ot_id || null, id]);
+    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones, asignado_a_trabajador_id ? parseInt(asignado_a_trabajador_id) : null, asignado_a_ot_id || null, fecha_compra || null, ficha_tecnica || null, id]);
     res.json({ message: 'Activo actualizado con éxito' });
   } catch (error) {
     res.status(500).json({ error: error.message });
