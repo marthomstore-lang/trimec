@@ -16,3 +16,6 @@ backend/uploads/*
 .vscode/
 .idea/
 Thumbs.db
+
+.vercel
+.env*

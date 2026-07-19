@@ -612,6 +612,12 @@ tr:hover td {
 .info-item-value {
   font-size: 0.95rem;
   font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.ot-detail-layout > * {
+  min-width: 0;
 }
 
 /* Floating Toast Notification */
@@ -804,4 +810,13 @@ tr:hover td {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
+}
+
+.worker-card-hover {
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+.worker-card-hover:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: var(--primary) !important;
 }

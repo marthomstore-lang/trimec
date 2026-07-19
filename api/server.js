@@ -142,6 +142,87 @@ app.put('/api/clientes/:id', authenticate, checkRole(['admin']), async (req, res
 });
 
 
+// --- USUARIOS CRUD ENDPOINTS ---
+
+// Obtener todos los usuarios (solo administradores)
+app.get('/api/usuarios', authenticate, checkRole(['admin']), async (req, res) => {
+  try {
+    const users = await query('SELECT id, nombre, email, rol FROM usuarios ORDER BY nombre ASC');
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Crear un nuevo usuario (solo administradores)
+app.post('/api/usuarios', authenticate, checkRole(['admin']), async (req, res) => {
+  const { nombre, email, password, rol } = req.body;
+  if (!nombre || !email || !password || !rol) {
+    return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+  }
+  try {
+    const existingUser = await get('SELECT id FROM usuarios WHERE email = ?', [email]);
+    if (existingUser) {
+      return res.status(400).json({ message: 'El correo ya está registrado por otro usuario' });
+    }
+    const hashedPwd = await bcrypt.hash(password, 10);
+    const result = await run(`
+      INSERT INTO usuarios (nombre, email, password_hash, rol) 
+      VALUES (?, ?, ?, ?)
+    `, [nombre, email, hashedPwd, rol]);
+    res.status(201).json({ id: result.id, nombre, email, rol });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Modificar un usuario existente (solo administradores)
+app.put('/api/usuarios/:id', authenticate, checkRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  const { nombre, email, password, rol } = req.body;
+  if (!nombre || !email || !rol) {
+    return res.status(400).json({ message: 'Nombre, email y rol son obligatorios' });
+  }
+  try {
+    const existingUser = await get('SELECT id FROM usuarios WHERE email = ? AND id != ?', [email, id]);
+    if (existingUser) {
+      return res.status(400).json({ message: 'El correo ya está registrado por otro usuario' });
+    }
+    if (password && password.trim() !== '') {
+      const hashedPwd = await bcrypt.hash(password, 10);
+      await run(`
+        UPDATE usuarios 
+        SET nombre = ?, email = ?, password_hash = ?, rol = ? 
+        WHERE id = ?
+      `, [nombre, email, hashedPwd, rol, id]);
+    } else {
+      await run(`
+        UPDATE usuarios 
+        SET nombre = ?, email = ?, rol = ? 
+        WHERE id = ?
+      `, [nombre, email, rol, id]);
+    }
+    res.json({ id: parseInt(id), nombre, email, rol });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar un usuario (solo administradores)
+app.delete('/api/usuarios/:id', authenticate, checkRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  if (req.user.id === parseInt(id)) {
+    return res.status(400).json({ message: 'No puedes eliminar tu propio usuario' });
+  }
+  try {
+    await run('DELETE FROM usuarios WHERE id = ?', [id]);
+    res.json({ message: 'Usuario eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 // --- TRABAJADORES ROUTES ---
 app.get('/api/trabajadores', authenticate, async (req, res) => {
   try {
@@ -623,7 +704,7 @@ app.get('/api/finanzas/rendimiento-personal', authenticate, checkRole(['admin'])
           FROM registro_hh r
           JOIN ordenes_trabajo o ON r.ot_id = o.id
           WHERE r.trabajador_id = ? AND STRFTIME('%Y-%m', r.fecha) = ?
-          GROUP BY r.ot_id
+          GROUP BY r.ot_id, o.detalle
         `, [w.id, currentMonth]);
 
         return {
@@ -668,7 +749,7 @@ app.get('/api/ots/:id/pdf', async (req, res) => {
     };
 
     // Obtener los ítems específicos de cotización/gasto si los hay, sino pasamos vacíos
-    const items = await query('SELECT detalle, cantidad, valor_neto as valor_total FROM gastos_diarios WHERE ot_id = ? AND clasificacion != "Almuerzo"', [id]);
+    const items = await query('SELECT detalle, cantidad, valor_neto as valor_total FROM gastos_diarios WHERE ot_id = ? AND clasificacion != \'Almuerzo\'', [id]);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=presupuesto-ot-${id}.pdf`);
@@ -779,6 +860,242 @@ app.delete('/api/archivos/:id', authenticate, checkRole(['admin', 'supervisor'])
     
     await run('DELETE FROM archivos_ot WHERE id = ?', [id]);
     res.json({ message: 'Archivo eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =========================================================================
+// MÓDULOS DE INVENTARIO, ACTIVOS, COTIZACIONES E INFORMES TÉCNICOS
+// =========================================================================
+
+// --- INVENTARIO ---
+app.get('/api/inventario', authenticate, async (req, res) => {
+  try {
+    const items = await query('SELECT * FROM inventario ORDER BY sku ASC');
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/inventario', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario } = req.body;
+  if (!sku || !descripcion) {
+    return res.status(400).json({ message: 'SKU y descripción son obligatorios' });
+  }
+  try {
+    const existing = await get('SELECT sku FROM inventario WHERE sku = ?', [sku]);
+    if (existing) {
+      await run(`
+        UPDATE inventario 
+        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?
+        WHERE sku = ?
+      `, [descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0, sku]);
+    } else {
+      await run(`
+        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [sku, descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0]);
+    }
+    res.json({ sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/inventario/movimientos', authenticate, async (req, res) => {
+  try {
+    const movs = await query('SELECT * FROM inventario_movimientos ORDER BY id DESC');
+    res.json(movs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/inventario/movimiento', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { tipo, fecha, sku, cantidad, valor_unitario, factura_num, proveedor_o_cliente, ot_id } = req.body;
+  if (!tipo || !fecha || !sku || !cantidad) {
+    return res.status(400).json({ message: 'Tipo, fecha, SKU y cantidad son obligatorios' });
+  }
+  try {
+    const item = await get('SELECT * FROM inventario WHERE sku = ?', [sku]);
+    if (!item) {
+      return res.status(404).json({ message: 'Insumo no encontrado en inventario' });
+    }
+    
+    // Registrar el movimiento
+    await run(`
+      INSERT INTO inventario_movimientos (tipo, fecha, sku, cantidad, valor_unitario, factura_num, proveedor_o_cliente, ot_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tipo, fecha, sku, parseFloat(cantidad), parseFloat(valor_unitario) || 0.0, factura_num, proveedor_o_cliente, ot_id]);
+
+    // Recalcular stock del item
+    let newStock = item.stock || 0.0;
+    if (tipo === 'ENTRADA') {
+      newStock += parseFloat(cantidad);
+    } else if (tipo === 'SALIDA') {
+      newStock -= parseFloat(cantidad);
+    }
+    
+    await run(`
+      UPDATE inventario 
+      SET stock = ?, valor_unitario = ?, fecha_ultimo_pedido = ? 
+      WHERE sku = ?
+    `, [newStock, parseFloat(valor_unitario) || item.valor_unitario, fecha, sku]);
+
+    // Si es salida asociada a una OT, agregar automáticamente a gastos_diarios
+    if (tipo === 'SALIDA' && ot_id) {
+      const net = (parseFloat(valor_unitario) || item.valor_unitario || 0.0) * parseFloat(cantidad);
+      const iva = net * 0.19;
+      const total = net + iva;
+      await run(`
+        INSERT INTO gastos_diarios (ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total)
+        VALUES (?, ?, 'INSUMOS', ?, ?, ?, ?, ?)
+      `, [ot_id, fecha, `[ SKU: ${sku} ] ${item.descripcion}`, parseFloat(cantidad), net, iva, total]);
+    }
+
+    res.json({ message: 'Movimiento registrado con éxito', stock: newStock });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- ACTIVOS (EQUIPOS Y HERRAMIENTAS) ---
+app.get('/api/activos', authenticate, async (req, res) => {
+  try {
+    const acts = await query(`
+      SELECT a.*, t.nombre as asignado_nombre 
+      FROM activos a
+      LEFT JOIN trabajadores t ON a.asignado_a_trabajador_id = t.id
+      ORDER BY a.id ASC
+    `);
+    res.json(acts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/activos', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones } = req.body;
+  if (!nombre) {
+    return res.status(400).json({ message: 'El nombre es obligatorio' });
+  }
+  try {
+    await run(`
+      INSERT INTO activos (nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones]);
+    res.status(201).json({ message: 'Activo creado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/activos/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { id } = req.params;
+  const { nombre, descripcion, tipo, ubicacion, proveedor, valor_compra, garantia_vencimiento, condicion, cantidad, modelo, observaciones, asignado_a_trabajador_id, asignado_a_ot_id } = req.body;
+  try {
+    await run(`
+      UPDATE activos 
+      SET nombre = ?, descripcion = ?, tipo = ?, ubicacion = ?, proveedor = ?, valor_compra = ?, garantia_vencimiento = ?, condicion = ?, cantidad = ?, modelo = ?, observaciones = ?, asignado_a_trabajador_id = ?, asignado_a_ot_id = ?
+      WHERE id = ?
+    `, [nombre, descripcion, tipo, ubicacion, proveedor, parseFloat(valor_compra) || 0.0, garantia_vencimiento, condicion, parseInt(cantidad) || 1, modelo, observaciones, asignado_a_trabajador_id ? parseInt(asignado_a_trabajador_id) : null, asignado_a_ot_id || null, id]);
+    res.json({ message: 'Activo actualizado con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- COTIZACIONES ---
+app.get('/api/cotizaciones', authenticate, async (req, res) => {
+  try {
+    const cots = await query(`
+      SELECT cot.*, cl.razon_social as cliente_nombre 
+      FROM cotizaciones cot
+      JOIN clientes cl ON cot.cliente_id = cl.id
+      ORDER BY cot.id DESC
+    `);
+    res.json(cots);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/cotizaciones', authenticate, checkRole(['admin']), async (req, res) => {
+  const { cliente_id, detalle, monto_neto_presupuesto, utilidad_porcentaje, hh_estimadas, materiales_estimados, terceros_estimados } = req.body;
+  if (!cliente_id || !detalle) {
+    return res.status(400).json({ message: 'Cliente y detalle son obligatorios' });
+  }
+  try {
+    await run(`
+      INSERT INTO cotizaciones (cliente_id, detalle, monto_neto_presupuesto, utilidad_porcentaje, hh_estimadas, materiales_estimados, terceros_estimados, fecha_creacion, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'CREADA')
+    `, [parseInt(cliente_id), detalle, parseFloat(monto_neto_presupuesto) || 0.0, parseFloat(utilidad_porcentaje) || 25.0, typeof hh_estimadas === 'string' ? hh_estimadas : JSON.stringify(hh_estimadas || []), typeof materiales_estimados === 'string' ? materiales_estimados : JSON.stringify(materiales_estimados || []), parseFloat(terceros_estimados) || 0.0, new Date().toISOString().split('T')[0]]);
+    res.status(201).json({ message: 'Cotización creada con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/cotizaciones/:id/estado', authenticate, checkRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  const { estado, ot_id } = req.body; // CREADA, APROBADA, RECHAZADA
+  try {
+    const cot = await get('SELECT * FROM cotizaciones WHERE id = ?', [id]);
+    if (!cot) {
+      return res.status(404).json({ message: 'Cotización no encontrada' });
+    }
+
+    if (estado === 'APROBADA' && cot.estado !== 'APROBADA') {
+      const activeOtId = ot_id || `OT-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      // Crear la OT automáticamente en la tabla ordenes_trabajo
+      await run(`
+        INSERT INTO ordenes_trabajo (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, monto_neto_presupuesto)
+        VALUES (?, ?, ?, ?, 'SP', 0, 0.0, ?, ?)
+      `, [activeOtId, cot.cliente_id, req.user.id, `[COT-${id}] ${cot.detalle}`, new Date().toISOString().split('T')[0], cot.monto_neto_presupuesto]);
+      
+      await run('UPDATE cotizaciones SET estado = ?, ot_creada_id = ? WHERE id = ?', ['APROBADA', activeOtId, id]);
+      return res.json({ message: 'Cotización aprobada y OT creada con éxito', ot_id: activeOtId });
+    }
+
+    await run('UPDATE cotizaciones SET estado = ? WHERE id = ?', [estado, id]);
+    res.json({ message: 'Estado de cotización actualizado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- INFORMES TÉCNICOS ---
+app.get('/api/informes/ot/:ot_id', authenticate, async (req, res) => {
+  const { ot_id } = req.params;
+  try {
+    const inf = await get('SELECT * FROM informes_tecnicos WHERE ot_id = ?', [ot_id]);
+    res.json(inf || null);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { ot_id } = req.params;
+  const { antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues } = req.body;
+  try {
+    const existing = await get('SELECT id FROM informes_tecnicos WHERE ot_id = ?', [ot_id]);
+    if (existing) {
+      await run(`
+        UPDATE informes_tecnicos 
+        SET antes_condicion = ?, despues_tareas = ?, recomendaciones = ?, fotos_antes = ?, fotos_despues = ?
+        WHERE ot_id = ?
+      `, [antes_condicion, despues_tareas, recomendaciones, typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []), typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []), ot_id]);
+    } else {
+      await run(`
+        INSERT INTO informes_tecnicos (ot_id, antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [ot_id, antes_condicion, despues_tareas, recomendaciones, typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []), typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || [])]);
+    }
+    res.json({ message: 'Informe técnico guardado con éxito' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

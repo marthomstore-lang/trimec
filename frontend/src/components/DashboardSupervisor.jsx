@@ -61,7 +61,7 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
         method: 'POST',
         body: JSON.stringify({
           ...newHh,
-          ot_id: parseInt(newHh.ot_id),
+          ot_id: newHh.ot_id,
           trabajador_id: parseInt(newHh.trabajador_id),
           horas_normales: parseFloat(newHh.horas_normales),
           horas_extra: parseFloat(newHh.horas_extra)
@@ -86,7 +86,7 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
         method: 'POST',
         body: JSON.stringify({
           ...newExpense,
-          ot_id: parseInt(newExpense.ot_id),
+          ot_id: newExpense.ot_id,
           cantidad: parseFloat(newExpense.cantidad),
           valor_neto: net,
           valor_iva: iva,

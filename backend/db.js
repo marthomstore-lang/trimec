@@ -321,6 +321,79 @@ export const initDb = async () => {
     )
   `));
 
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS inventario (
+      sku TEXT PRIMARY KEY,
+      descripcion TEXT NOT NULL,
+      proveedor TEXT,
+      fecha_ultimo_pedido TEXT,
+      stock REAL DEFAULT 0.0,
+      ubicacion TEXT,
+      valor_unitario REAL DEFAULT 0.0
+    )
+  `));
+
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS inventario_movimientos (
+      id SERIAL PRIMARY KEY,
+      tipo TEXT NOT NULL CHECK(tipo IN ('ENTRADA', 'SALIDA')),
+      fecha TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      cantidad REAL NOT NULL,
+      valor_unitario REAL DEFAULT 0.0,
+      factura_num TEXT,
+      proveedor_o_cliente TEXT,
+      ot_id TEXT
+    )
+  `));
+
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS activos (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      descripcion TEXT,
+      tipo TEXT,
+      ubicacion TEXT,
+      proveedor TEXT,
+      valor_compra REAL DEFAULT 0.0,
+      garantia_vencimiento TEXT,
+      condicion TEXT,
+      cantidad INTEGER DEFAULT 1,
+      modelo TEXT,
+      observaciones TEXT,
+      asignado_a_trabajador_id INTEGER,
+      asignado_a_ot_id TEXT
+    )
+  `));
+
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS cotizaciones (
+      id SERIAL PRIMARY KEY,
+      cliente_id INTEGER NOT NULL,
+      detalle TEXT NOT NULL,
+      monto_neto_presupuesto REAL DEFAULT 0.0,
+      utilidad_porcentaje REAL DEFAULT 25.0,
+      hh_estimadas TEXT,
+      materiales_estimados TEXT,
+      terceros_estimados REAL DEFAULT 0.0,
+      fecha_creacion TEXT,
+      estado TEXT DEFAULT 'CREADA',
+      ot_creada_id TEXT
+    )
+  `));
+
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS informes_tecnicos (
+      id SERIAL PRIMARY KEY,
+      ot_id TEXT NOT NULL UNIQUE,
+      antes_condicion TEXT,
+      despues_tareas TEXT,
+      recomendaciones TEXT,
+      fotos_antes TEXT,
+      fotos_despues TEXT
+    )
+  `));
+
   // Sembrar usuarios iniciales
   const userCount = await get(`SELECT COUNT(*) as count FROM usuarios`);
   if (parseInt(userCount.count, 10) === 0) {
