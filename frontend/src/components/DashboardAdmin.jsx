@@ -17,7 +17,8 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   // Form inputs
   const [newClient, setNewClient] = useState({ rut: '', razon_social: '', prefijo: '', contacto_nombre: '', contacto_email: '', contacto_telefono: '' });
   const [selectedClientIdToEdit, setSelectedClientIdToEdit] = useState('');
-  const [newOt, setNewOt] = useState({ id: '', cliente_id: '', detalle: '', estado: 'SP', es_emergencia: false, recargo_emergencia: 0, monto_neto_presupuesto: 0, hh_presupuestadas: 0, fecha_solicitud: new Date().toISOString().split('T')[0], fecha_aprobacion: '', fecha_entrega: '' });
+  const [newOt, setNewOt] = useState({ id: '', cliente_id: '', detalle: '', estado: 'SP', es_emergencia: false, recargo_emergencia: 0, monto_neto_presupuesto: 0, hh_presupuestadas: 0, fecha_solicitud: new Date().toISOString().split('T')[0], fecha_aprobacion: '', fecha_entrega: '', fecha_proyectada_presupuesto: '' });
+  const [numManual, setNumManual] = useState(false);
 
   const generatePrefixSuggestion = (name) => {
     if (!name) return '';
@@ -469,7 +470,8 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       });
       showToast('Orden de Trabajo abierta con éxito', 'success');
       setShowOtModal(false);
-      setNewOt({ id: '', cliente_id: '', detalle: '', estado: 'SP', es_emergencia: false, recargo_emergencia: 0, monto_neto_presupuesto: 0, hh_presupuestadas: 0, fecha_solicitud: new Date().toISOString().split('T')[0], fecha_aprobacion: '', fecha_entrega: '' });
+      setNewOt({ id: '', cliente_id: '', detalle: '', estado: 'SP', es_emergencia: false, recargo_emergencia: 0, monto_neto_presupuesto: 0, hh_presupuestadas: 0, fecha_solicitud: new Date().toISOString().split('T')[0], fecha_aprobacion: '', fecha_entrega: '', fecha_proyectada_presupuesto: '' });
+      setNumManual(false);
       fetchData();
     } catch (err) {
       showToast(err.message, 'danger');
@@ -483,13 +485,33 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     }
     const selected = clients.find(c => c.id === parseInt(clientId));
     if (selected) {
+      if (numManual) {
+        setNewOt({ ...newOt, cliente_id: clientId });
+        return;
+      }
       try {
         const { siguiente_numero } = await api('/ots/siguiente-numero');
         const prefijo = selected.prefijo || 'OT';
-        setNewOt({ ...newOt, cliente_id: clientId, id: `${prefijo}-${siguiente_numero}` });
+        setNewOt({ ...newOt, cliente_id: clientId, id: `${prefijo}-\\${siguiente_numero}`.replace('\\', '') });
       } catch (err) {
         showToast('Error al obtener correlativo de OT', 'danger');
         setNewOt({ ...newOt, cliente_id: clientId, id: `${selected.prefijo || 'OT'}-` });
+      }
+    }
+  };
+
+  const toggleNumManual = async (manual) => {
+    setNumManual(manual);
+    if (!manual && newOt.cliente_id) {
+      const selected = clients.find(c => c.id === parseInt(newOt.cliente_id));
+      if (selected) {
+        try {
+          const { siguiente_numero } = await api('/ots/siguiente-numero');
+          const prefijo = selected.prefijo || 'OT';
+          setNewOt({ ...newOt, id: `${prefijo}-${siguiente_numero}` });
+        } catch (err) {
+          showToast('Error al obtener correlativo de OT', 'danger');
+        }
       }
     }
   };
@@ -1149,6 +1171,17 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
               <button className="btn btn-secondary btn-sm" onClick={() => setShowOtModal(false)}>Cerrar</button>
             </div>
             <form onSubmit={handleCreateOt}>
+              <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                  <input type="radio" name="tipo_num" checked={!numManual} onChange={() => toggleNumManual(false)} />
+                  Numeración Automática
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                  <input type="radio" name="tipo_num" checked={numManual} onChange={() => toggleNumManual(true)} />
+                  Numeración Manual (Personalizada)
+                </label>
+              </div>
+
               <div className="flex-row-gap">
                 <div className="form-group flex-grow">
                   <label>Cliente</label>
@@ -1158,8 +1191,8 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                   </select>
                 </div>
                 <div className="form-group flex-grow">
-                  <label>Número de OT (Autogenerado)</label>
-                  <input type="text" className="form-control" placeholder="Ej: SER-545" value={newOt.id} onChange={(e) => setNewOt({ ...newOt, id: e.target.value })} required />
+                  <label>Número de OT {numManual ? '(Manual)' : '(Autogenerado)'}</label>
+                  <input type="text" className="form-control" placeholder="Ej: SER-545" value={newOt.id} onChange={(e) => setNewOt({ ...newOt, id: e.target.value })} disabled={!numManual} required />
                 </div>
               </div>
 
@@ -1172,6 +1205,10 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                 <div className="form-group flex-grow">
                   <label>Fecha de Solicitud</label>
                   <input type="date" className="form-control" value={newOt.fecha_solicitud} onChange={(e) => setNewOt({ ...newOt, fecha_solicitud: e.target.value })} />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Fecha Proyectada Presupuesto</label>
+                  <input type="date" className="form-control" value={newOt.fecha_proyectada_presupuesto || ''} onChange={(e) => setNewOt({ ...newOt, fecha_proyectada_presupuesto: e.target.value })} />
                 </div>
                 <div className="form-group flex-grow">
                   <label>Monto Neto Presupuestado ($)</label>

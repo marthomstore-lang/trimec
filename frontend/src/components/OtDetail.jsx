@@ -68,7 +68,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       setClients(clientsData);
       setFiles(filesData);
       setWorkers(workersData);
-      setEditForm(otData);
+      setEditForm({ ...otData, nuevo_id: otData.id, modificar_id: false });
       setInventario(inventarioData);
       setInforme(informeData);
       if (informeData) {
@@ -227,13 +227,17 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const handleUpdateOtDetails = async (e) => {
     e.preventDefault();
     try {
-      await api(`/ots/${otId}`, {
+      const res = await api(`/ots/${otId}`, {
         method: 'PUT',
         body: JSON.stringify(editForm)
       });
       showToast('Detalles de OT actualizados', 'success');
       setIsEditing(false);
-      fetchOtDetail();
+      if (res.nuevo_id && res.nuevo_id !== otId) {
+        onBack(); // Volver atrás si el ID cambia para forzar refresco
+      } else {
+        fetchOtDetail();
+      }
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -376,6 +380,18 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
             <h3>Editar Datos de la Orden de Trabajo</h3>
           </div>
           <form onSubmit={handleUpdateOtDetails}>
+            <div style={{ display: 'flex', gap: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                <input type="checkbox" checked={editForm.modificar_id || false} onChange={(e) => setEditForm({ ...editForm, modificar_id: e.target.checked })} />
+                ¿Modificar Número de OT / SP?
+              </label>
+              {editForm.modificar_id && (
+                <div className="flex-grow">
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Nuevo Número de OT/SP</label>
+                  <input type="text" className="form-control mt-1" value={editForm.nuevo_id || ''} onChange={(e) => setEditForm({ ...editForm, nuevo_id: e.target.value })} required />
+                </div>
+              )}
+            </div>
             <div className="flex-row-gap">
               <div className="form-group flex-grow">
                 <label>Cliente</label>

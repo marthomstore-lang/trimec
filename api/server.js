@@ -488,16 +488,41 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
 
 app.put('/api/ots/:id', authenticate, checkRole(['admin']), async (req, res) => {
   const { id } = req.params;
-  const { cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
+  const { nuevo_id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   
   try {
-    await run(
-      `UPDATE ordenes_trabajo 
-       SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
-       WHERE id = ?`,
-      [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id]
-    );
-    res.json({ message: 'OT actualizada con éxito' });
+    if (nuevo_id && nuevo_id !== id) {
+      // Verificar si el nuevo ID ya existe
+      const existing = await get('SELECT id FROM ordenes_trabajo WHERE id = ?', [nuevo_id]);
+      if (existing) {
+        return res.status(400).json({ message: 'El nuevo número de OT ya existe.' });
+      }
+      
+      // Actualizar en cascada en todas las tablas relacionales locales
+      await run('UPDATE registro_hh SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE gastos_diarios SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE facturacion SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE archivos_ot SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE activos SET asignado_a_ot_id = ? WHERE asignado_a_ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE informes_tecnicos SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      await run('UPDATE inventario_movimientos SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
+      
+      // Finalmente actualizar el registro principal de la OT
+      await run(
+        `UPDATE ordenes_trabajo 
+         SET id = ?, cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
+         WHERE id = ?`,
+        [nuevo_id, cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id, id]
+      );
+    } else {
+      await run(
+        `UPDATE ordenes_trabajo 
+         SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
+         WHERE id = ?`,
+        [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id]
+      );
+    }
+    res.json({ message: 'OT actualizada con éxito', nuevo_id: nuevo_id || id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
