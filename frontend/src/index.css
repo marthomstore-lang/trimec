@@ -890,7 +890,7 @@ tr:hover td {
     margin-bottom: 0.5rem !important;
   }
   .search-control {
-    padding: 0.4rem 0.75rem !important;
+    padding: 0.4rem 0.75rem 0.4rem 2rem !important;
     font-size: 0.8rem !important;
   }
   table {
