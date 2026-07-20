@@ -820,3 +820,100 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.04) !important;
   border-color: var(--primary) !important;
 }
+
+/* --- Ultra Compact Mode for Laptops (1366x768 / low height screens) --- */
+@media (max-height: 800px), (max-width: 1366px) {
+  .main-nav {
+    padding: 0.4rem 1rem !important;
+  }
+  .nav-brand {
+    font-size: 1.2rem !important;
+  }
+  .nav-user {
+    gap: 0.5rem !important;
+  }
+  .user-badge {
+    padding: 0.2rem 0.5rem !important;
+    font-size: 0.75rem !important;
+  }
+  .dashboard-container {
+    padding: 0.5rem 1rem !important;
+  }
+  .dashboard-title-bar {
+    margin-bottom: 0.5rem !important;
+  }
+  .dashboard-title-bar h2 {
+    font-size: 1.25rem !important;
+  }
+  .dashboard-title-bar p {
+    display: none !important; /* Ocultar subtítulo para ahorrar espacio vertical */
+  }
+  .dashboard-title-bar div[style*="display: flex"] {
+    gap: 0.5rem !important;
+  }
+  .kpi-grid {
+    gap: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  .kpi-card {
+    padding: 0.5rem 0.75rem !important;
+    border-radius: 0.75rem !important;
+  }
+  .kpi-label {
+    font-size: 0.65rem !important;
+    margin-bottom: 0.15rem !important;
+  }
+  .kpi-value {
+    font-size: 1.1rem !important;
+  }
+  .tab-bar {
+    margin-bottom: 0.75rem !important;
+    gap: 0.35rem !important;
+  }
+  .tab-btn {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.75rem !important;
+    border-radius: 0.5rem !important;
+  }
+  .panel-card {
+    padding: 0.75rem 1rem !important;
+    margin-bottom: 0.75rem !important;
+    border-radius: 0.75rem !important;
+  }
+  .panel-header {
+    margin-bottom: 0.5rem !important;
+  }
+  .panel-header h3 {
+    font-size: 1rem !important;
+  }
+  .search-container {
+    margin-bottom: 0.5rem !important;
+  }
+  .search-control {
+    padding: 0.4rem 0.75rem !important;
+    font-size: 0.8rem !important;
+  }
+  table {
+    font-size: 0.75rem !important;
+  }
+  th {
+    padding: 0.35rem 0.5rem !important;
+    font-size: 0.7rem !important;
+  }
+  td {
+    padding: 0.35rem 0.5rem !important;
+  }
+  .btn {
+    padding: 0.4rem 0.85rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 0.5rem !important;
+  }
+  .btn-sm {
+    padding: 0.2rem 0.4rem !important;
+    font-size: 0.7rem !important;
+  }
+  .badge {
+    padding: 0.15rem 0.4rem !important;
+    font-size: 0.65rem !important;
+  }
+}
