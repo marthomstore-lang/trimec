@@ -858,13 +858,27 @@ app.get('/api/ots/:id/pdf', async (req, res) => {
       contacto_telefono: ot.contacto_telefono
     };
 
-    // Obtener los ítems específicos de cotización/gasto si los hay, sino pasamos vacíos
-    const items = await query('SELECT detalle, cantidad, valor_neto as valor_total FROM gastos_diarios WHERE ot_id = ? AND clasificacion != \'Almuerzo\'', [id]);
+    // Obtener desglose de mano de obra (HH) y gastos/materiales
+    const hhList = await query(`
+      SELECT r.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol,
+             ((r.horas_normales * t.valor_hh_normal) + (r.horas_extra * t.valor_hh_extra)) as costo_calculado
+      FROM registro_hh r
+      JOIN trabajadores t ON r.trabajador_id = t.id
+      WHERE r.ot_id = ?
+      ORDER BY r.fecha ASC
+    `, [id]);
+
+    const expensesList = await query(`
+      SELECT clasificacion, detalle, cantidad, valor_neto, valor_total 
+      FROM gastos_diarios 
+      WHERE ot_id = ? AND clasificacion != 'Almuerzo'
+      ORDER BY fecha ASC
+    `, [id]);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=presupuesto-ot-${id}.pdf`);
 
-    generateBudgetPDF(ot, client, items, res);
+    generateBudgetPDF(ot, client, { hhList, expensesList }, res);
   } catch (error) {
     console.error('Error al generar PDF:', error);
     res.status(500).send('Error interno al generar el PDF del presupuesto.');
