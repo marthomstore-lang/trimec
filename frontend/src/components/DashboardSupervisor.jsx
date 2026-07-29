@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import api from '../utils/api';
+import api, { BASE_URL } from '../utils/api';
 
 const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('ots'); // 'ots', 'hh', 'gastos'
+  const [activeTab, setActiveTab] = useState('ots'); // 'ots', 'bodega', 'hh', 'gastos'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Lists for logs
   const [hhRecords, setHhRecords] = useState([]);
   const [expenseRecords, setExpenseRecords] = useState([]);
+
+  // Edit States for HH & Expense
+  const [editingHh, setEditingHh] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
 
   // Bodega States
   const [inventario, setInventario] = useState([]);
@@ -176,6 +180,56 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
     }
   };
 
+  const handleUpdateHh = async (e) => {
+    e.preventDefault();
+    try {
+      await api(`/hh/${editingHh.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ot_id: editingHh.ot_id,
+          trabajador_id: parseInt(editingHh.trabajador_id),
+          fecha: editingHh.fecha,
+          horas_normales: parseFloat(editingHh.horas_normales),
+          horas_extra: parseFloat(editingHh.horas_extra),
+          ubicacion: editingHh.ubicacion,
+          actividad: editingHh.actividad
+        })
+      });
+      showToast('Registro de horas actualizado', 'success');
+      setEditingHh(null);
+      fetchData();
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  };
+
+  const handleUpdateExpense = async (e) => {
+    e.preventDefault();
+    const net = parseFloat(editingExpense.valor_neto) || 0;
+    const iva = net * 0.19;
+    const total = net + iva;
+    try {
+      await api(`/gastos/${editingExpense.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ot_id: editingExpense.ot_id,
+          fecha: editingExpense.fecha,
+          clasificacion: editingExpense.clasificacion,
+          detalle: editingExpense.detalle,
+          cantidad: parseFloat(editingExpense.cantidad),
+          valor_neto: net,
+          valor_iva: iva,
+          valor_total: total
+        })
+      });
+      showToast('Gasto actualizado con éxito', 'success');
+      setEditingExpense(null);
+      fetchData();
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  };
+
   return (
     <div className="dashboard-container">
       <div className="dashboard-title-bar">
@@ -241,9 +295,15 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                       </div>
                       <div className="ot-card-client">{ot.cliente_nombre}</div>
                       <div className="ot-card-detail">{ot.detalle}</div>
-                      <div style={{ marginTop: '1rem' }}>
+                      <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => onSelectOt(ot.id)}>
                           🔍 Ver Detalles y Costos
+                        </button>
+                        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => {
+                          const token = localStorage.getItem('trimec_token');
+                          window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
+                        }}>
+                          📄 Presupuesto PDF
                         </button>
                       </div>
                     </div>
@@ -344,9 +404,14 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                           </td>
                           <td>{rec.horas_normales}h / {rec.horas_extra}h</td>
                           <td>
-                            <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteHh(rec.id)}>
-                              🗑️
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingHh({ ...rec })}>
+                                ✏️
+                              </button>
+                              <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteHh(rec.id)}>
+                                🗑️
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -453,9 +518,14 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                           </td>
                           <td className="text-right">${Math.round(rec.valor_total).toLocaleString('es-CL')}</td>
                           <td>
-                            <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteExpense(rec.id)}>
-                              🗑️
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingExpense({ ...rec })}>
+                                ✏️
+                              </button>
+                              <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteExpense(rec.id)}>
+                                🗑️
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -467,6 +537,72 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: BODEGA */}
+          {activeTab === 'bodega' && (
+            <div className="panel-card">
+              <div className="panel-header" style={{ marginBottom: '1.5rem' }}>
+                <div>
+                  <h3>Bodega de Insumos y Repuestos</h3>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Artículos registrados y existencias de taller
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', descripcion: '', familia: '', unidad_medida: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 }); setShowItemModal(true); }}>
+                    + Nuevo Artículo
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={() => { setNewMov({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' }); setShowMovModal(true); }}>
+                    📥 Movimiento
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Descripción</th>
+                      <th>Familia</th>
+                      <th>Ubicación</th>
+                      <th>Stock</th>
+                      <th>Costo Unitario</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventario.map(item => (
+                      <tr key={item.sku}>
+                        <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{item.sku}</td>
+                        <td>{item.descripcion}</td>
+                        <td>{item.familia || '-'}</td>
+                        <td>{item.ubicacion || '-'}</td>
+                        <td>
+                          <span className={`badge ${item.stock <= 2 ? 'badge-emergencia' : 'badge-aprobada'}`}>
+                            {item.stock} {item.unidad_medida || 'unid'}
+                          </span>
+                        </td>
+                        <td className="text-right">${Math.round(item.valor_unitario).toLocaleString('es-CL')}</td>
+                        <td>
+                          <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => { setNewItem(item); setShowItemModal(true); }}>
+                            ✏️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {inventario.length === 0 && (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                          No hay artículos registrados en el inventario.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -581,6 +717,123 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                 </div>
               )}
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Registrar Movimiento</button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: EDITAR HH */}
+      {editingHh && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Editar Registro de Horas (HH)</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingHh(null)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleUpdateHh}>
+              <div className="form-group">
+                <label>Asociar a OT</label>
+                <select className="form-control" value={editingHh.ot_id} onChange={(e) => setEditingHh({ ...editingHh, ot_id: e.target.value })} required>
+                  <option value="">-- Seleccionar --</option>
+                  {ots.map(o => <option key={o.id} value={o.id}>OT {o.id} - {o.cliente_nombre}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Trabajador</label>
+                <select className="form-control" value={editingHh.trabajador_id} onChange={(e) => setEditingHh({ ...editingHh, trabajador_id: e.target.value })} required>
+                  <option value="">-- Seleccionar --</option>
+                  {workers.map(w => <option key={w.id} value={w.id}>{w.nombre} ({w.rol})</option>)}
+                </select>
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Fecha</label>
+                  <input type="date" className="form-control" value={editingHh.fecha} onChange={(e) => setEditingHh({ ...editingHh, fecha: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Ubicación</label>
+                  <select className="form-control" value={editingHh.ubicacion || 'Taller'} onChange={(e) => setEditingHh({ ...editingHh, ubicacion: e.target.value })}>
+                    <option value="Taller">Taller</option>
+                    <option value="Terreno">Terreno</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Horas Normales</label>
+                  <input type="number" step="0.5" className="form-control" value={editingHh.horas_normales} onChange={(e) => setEditingHh({ ...editingHh, horas_normales: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Horas Extra</label>
+                  <input type="number" step="0.5" className="form-control" value={editingHh.horas_extra} onChange={(e) => setEditingHh({ ...editingHh, horas_extra: e.target.value })} required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Actividad Realizada</label>
+                <input type="text" className="form-control" value={editingHh.actividad} onChange={(e) => setEditingHh({ ...editingHh, actividad: e.target.value })} required />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Guardar Cambios</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR GASTO */}
+      {editingExpense && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Editar Gasto Diario</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingExpense(null)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleUpdateExpense}>
+              <div className="form-group">
+                <label>Asociar a OT</label>
+                <select className="form-control" value={editingExpense.ot_id} onChange={(e) => setEditingExpense({ ...editingExpense, ot_id: e.target.value })} required>
+                  <option value="">-- Seleccionar --</option>
+                  {ots.map(o => <option key={o.id} value={o.id}>OT {o.id} - {o.cliente_nombre}</option>)}
+                </select>
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Categoría Gasto</label>
+                  <select className="form-control" value={editingExpense.clasificacion} onChange={(e) => setEditingExpense({ ...editingExpense, clasificacion: e.target.value })}>
+                    <option value="INSUMOS">INSUMOS</option>
+                    <option value="Almuerzo">Almuerzo / Alimentación</option>
+                    <option value="Plotteo">Plotteo de Planos</option>
+                    <option value="Peaje">Peajes y Transportes</option>
+                    <option value="Combustible">Combustible</option>
+                    <option value="Otros">Otros</option>
+                  </select>
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Fecha</label>
+                  <input type="date" className="form-control" value={editingExpense.fecha} onChange={(e) => setEditingExpense({ ...editingExpense, fecha: e.target.value })} required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Descripción / Detalle</label>
+                <input type="text" className="form-control" value={editingExpense.detalle} onChange={(e) => setEditingExpense({ ...editingExpense, detalle: e.target.value })} required />
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Cantidad</label>
+                  <input type="number" step="any" className="form-control" value={editingExpense.cantidad} onChange={(e) => setEditingExpense({ ...editingExpense, cantidad: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Valor NETO ($)</label>
+                  <input type="number" step="0.1" className="form-control" value={editingExpense.valor_neto} onChange={(e) => setEditingExpense({ ...editingExpense, valor_neto: e.target.value })} required />
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Guardar Cambios</button>
             </form>
           </div>
         </div>

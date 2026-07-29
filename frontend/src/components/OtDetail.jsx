@@ -37,6 +37,10 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     valor_neto: ''
   });
 
+  // Edit HH & Expense states
+  const [editingHh, setEditingHh] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
+
   // Inventario / Consumo States
   const [inventario, setInventario] = useState([]);
   const [showAddConsumoForm, setShowAddConsumoForm] = useState(false);
@@ -208,6 +212,79 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       showToast(err.message || 'Error al registrar gasto', 'danger');
     }
   };
+
+  const handleUpdateHhSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api(`/hh/${editingHh.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ot_id: otId,
+          trabajador_id: parseInt(editingHh.trabajador_id),
+          fecha: editingHh.fecha,
+          horas_normales: parseFloat(editingHh.horas_normales),
+          horas_extra: parseFloat(editingHh.horas_extra),
+          ubicacion: editingHh.ubicacion,
+          actividad: editingHh.actividad
+        })
+      });
+      showToast('Registro de horas actualizado', 'success');
+      setEditingHh(null);
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al actualizar horas', 'danger');
+    }
+  };
+
+  const handleDeleteHh = async (id) => {
+    if (!window.confirm('¿Seguro que deseas eliminar este registro de horas?')) return;
+    try {
+      await api(`/hh/${id}`, { method: 'DELETE' });
+      showToast('Registro de horas eliminado', 'success');
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al eliminar registro de horas', 'danger');
+    }
+  };
+
+  const handleUpdateExpenseSubmit = async (e) => {
+    e.preventDefault();
+    const net = parseFloat(editingExpense.valor_neto) || 0;
+    const iva = net * 0.19;
+    const total = net + iva;
+    try {
+      await api(`/gastos/${editingExpense.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ot_id: otId,
+          fecha: editingExpense.fecha,
+          clasificacion: editingExpense.clasificacion,
+          detalle: editingExpense.detalle,
+          cantidad: parseFloat(editingExpense.cantidad),
+          valor_neto: net,
+          valor_iva: iva,
+          valor_total: total
+        })
+      });
+      showToast('Gasto actualizado con éxito', 'success');
+      setEditingExpense(null);
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al actualizar gasto', 'danger');
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (!window.confirm('¿Seguro que deseas eliminar este gasto?')) return;
+    try {
+      await api(`/gastos/${id}`, { method: 'DELETE' });
+      showToast('Gasto eliminado', 'success');
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al eliminar gasto', 'danger');
+    }
+  };
+
   const handleStatusChange = async (newStatus) => {
     try {
       await api(`/ots/${otId}`, {
@@ -819,6 +896,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                       <th>Trabajador</th>
                       <th>Horas</th>
                       <th>Costo</th>
+                      {['admin', 'supervisor'].includes(userRole) && <th>Acción</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -831,11 +909,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                         </td>
                         <td>N:{hh.horas_normales}h / E:{hh.horas_extra}h</td>
                         <td className="text-right" style={{ fontWeight: 600 }}>${Math.round(hh.costo_calculado).toLocaleString('es-CL')}</td>
+                        {['admin', 'supervisor'].includes(userRole) && (
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingHh({ ...hh })}>✏️</button>
+                              <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteHh(hh.id)}>🗑️</button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {hhList.length === 0 && (
                       <tr>
-                        <td colSpan="4" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin horas imputadas en esta OT.</td>
+                        <td colSpan={['admin', 'supervisor'].includes(userRole) ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin horas imputadas en esta OT.</td>
                       </tr>
                     )}
                   </tbody>
@@ -946,6 +1032,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                       <th>Item</th>
                       <th>Neto</th>
                       <th>Total</th>
+                      {['admin', 'supervisor'].includes(userRole) && <th>Acción</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -958,11 +1045,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                         </td>
                         <td className="text-right">${Math.round(exp.valor_neto).toLocaleString('es-CL')}</td>
                         <td className="text-right" style={{ fontWeight: 600 }}>${Math.round(exp.valor_total).toLocaleString('es-CL')}</td>
+                        {['admin', 'supervisor'].includes(userRole) && (
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingExpense({ ...exp })}>✏️</button>
+                              <button className="btn btn-danger btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handleDeleteExpense(exp.id)}>🗑️</button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {expenses.length === 0 && (
                       <tr>
-                        <td colSpan="4" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin compras registradas para esta OT.</td>
+                        <td colSpan={['admin', 'supervisor'].includes(userRole) ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin compras registradas para esta OT.</td>
                       </tr>
                     )}
                   </tbody>
@@ -1039,6 +1134,117 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 Cerrar Previsualización
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR REGISTRO HH */}
+      {editingHh && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Editar Registro de Horas (HH)</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingHh(null)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleUpdateHhSubmit}>
+              <div className="form-group">
+                <label>Trabajador</label>
+                <select className="form-control" value={editingHh.trabajador_id} onChange={(e) => setEditingHh({ ...editingHh, trabajador_id: e.target.value })} required>
+                  <option value="">-- Seleccionar --</option>
+                  {workers.map(w => <option key={w.id} value={w.id}>{w.nombre} ({w.rol})</option>)}
+                </select>
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Fecha</label>
+                  <input type="date" className="form-control" value={editingHh.fecha} onChange={(e) => setEditingHh({ ...editingHh, fecha: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Ubicación</label>
+                  <select className="form-control" value={editingHh.ubicacion || 'Taller'} onChange={(e) => setEditingHh({ ...editingHh, ubicacion: e.target.value })}>
+                    <option value="Taller">Taller</option>
+                    <option value="Terreno">Terreno</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Horas Normales</label>
+                  <input type="number" step="0.5" className="form-control" value={editingHh.horas_normales} onChange={(e) => setEditingHh({ ...editingHh, horas_normales: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Horas Extra</label>
+                  <input type="number" step="0.5" className="form-control" value={editingHh.horas_extra} onChange={(e) => setEditingHh({ ...editingHh, horas_extra: e.target.value })} required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Actividad Realizada</label>
+                <input type="text" className="form-control" value={editingHh.actividad} onChange={(e) => setEditingHh({ ...editingHh, actividad: e.target.value })} required />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Guardar Cambios</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR GASTO */}
+      {editingExpense && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Editar Gasto Diario</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingExpense(null)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleUpdateExpenseSubmit}>
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Categoría Gasto</label>
+                  <select className="form-control" value={editingExpense.clasificacion} onChange={(e) => setEditingExpense({ ...editingExpense, clasificacion: e.target.value })}>
+                    <option value="INSUMOS">INSUMOS</option>
+                    <option value="Almuerzo">Almuerzo / Alimentación</option>
+                    <option value="Plotteo">Plotteo de Planos</option>
+                    <option value="Peaje">Peajes y Transportes</option>
+                    <option value="Combustible">Combustible</option>
+                    <option value="Otros">Otros</option>
+                  </select>
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Fecha</label>
+                  <input type="date" className="form-control" value={editingExpense.fecha} onChange={(e) => setEditingExpense({ ...editingExpense, fecha: e.target.value })} required />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Descripción / Detalle</label>
+                <input type="text" className="form-control" value={editingExpense.detalle} onChange={(e) => setEditingExpense({ ...editingExpense, detalle: e.target.value })} required />
+              </div>
+
+              <div className="flex-row-gap">
+                <div className="form-group flex-grow">
+                  <label>Cantidad</label>
+                  <input type="number" step="any" className="form-control" value={editingExpense.cantidad} onChange={(e) => setEditingExpense({ ...editingExpense, cantidad: e.target.value })} required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Valor NETO ($)</label>
+                  <input type="number" step="0.1" className="form-control" value={editingExpense.valor_neto} onChange={(e) => setEditingExpense({ ...editingExpense, valor_neto: e.target.value })} required />
+                </div>
+              </div>
+
+              {editingExpense.valor_neto && (
+                <div style={{ fontSize: '0.85rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>IVA (19%): ${Math.round(parseFloat(editingExpense.valor_neto) * 0.19).toLocaleString('es-CL')}</span>
+                    <strong>Total Estimado: ${Math.round(parseFloat(editingExpense.valor_neto) * 1.19).toLocaleString('es-CL')}</strong>
+                  </div>
+                </div>
+              )}
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Guardar Cambios</button>
+            </form>
           </div>
         </div>
       )}

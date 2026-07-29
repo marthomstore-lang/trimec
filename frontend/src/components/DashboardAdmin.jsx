@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../utils/api';
+import api, { BASE_URL } from '../utils/api';
 
 const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
@@ -696,9 +696,17 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                         </span>
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => onSelectOt(ot.id)}>
-                          🔍 Gestionar
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => onSelectOt(ot.id)}>
+                            🔍 Gestionar
+                          </button>
+                          <button className="btn btn-primary btn-sm" style={{ padding: '0.2rem 0.4rem' }} title="Descargar Presupuesto PDF" onClick={() => {
+                            const token = localStorage.getItem('trimec_token');
+                            window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
+                          }}>
+                            📄 PDF
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

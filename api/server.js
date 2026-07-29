@@ -486,7 +486,7 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
   }
 });
 
-app.put('/api/ots/:id', authenticate, checkRole(['admin']), async (req, res) => {
+app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   const { nuevo_id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   
@@ -575,6 +575,22 @@ app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor']), async (req
   }
 });
 
+app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { id } = req.params;
+  const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
+  try {
+    await run(
+      `UPDATE registro_hh 
+       SET ot_id = ?, trabajador_id = ?, fecha = ?, horas_normales = ?, horas_extra = ?, ubicacion = ?, actividad = ?
+       WHERE id = ?`,
+      [ot_id, trabajador_id, fecha, parseFloat(horas_normales) || 0.0, parseFloat(horas_extra) || 0.0, ubicacion || 'Taller', actividad, id]
+    );
+    res.json({ message: 'Registro de horas actualizado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.delete('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   try {
@@ -629,6 +645,25 @@ app.delete('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor']), 
   try {
     await run('DELETE FROM gastos_diarios WHERE id = ?', [id]);
     res.json({ message: 'Gasto eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { id } = req.params;
+  const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total } = req.body;
+  try {
+    const net = parseFloat(valor_neto) || 0.0;
+    const iva = valor_iva !== undefined ? parseFloat(valor_iva) : net * 0.19;
+    const total = valor_total !== undefined ? parseFloat(valor_total) : net + iva;
+    await run(
+      `UPDATE gastos_diarios 
+       SET ot_id = ?, fecha = ?, clasificacion = ?, detalle = ?, cantidad = ?, valor_neto = ?, valor_iva = ?, valor_total = ?
+       WHERE id = ?`,
+      [ot_id, fecha, clasificacion, detalle, parseFloat(cantidad) || 1.0, net, iva, total, id]
+    );
+    res.json({ message: 'Gasto actualizado con éxito' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
