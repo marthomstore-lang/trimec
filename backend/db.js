@@ -161,6 +161,9 @@ export const initDb = async () => {
       $$ LANGUAGE plpgsql IMMUTABLE;
     `);
     await pgPool.query(`
+      ALTER TABLE ordenes_trabajo DROP CONSTRAINT IF EXISTS ordenes_trabajo_estado_check;
+    `).catch(err => console.log('Error dropping check constraint in postgres:', err.message));
+    await pgPool.query(`
       ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS fecha_proyectada_presupuesto VARCHAR(255);
     `).catch(err => console.log('Error adding fecha_proyectada_presupuesto to postgres:', err.message));
     await pgPool.query(`
