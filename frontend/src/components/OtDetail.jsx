@@ -1060,12 +1060,13 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                     <div className="form-group flex-grow" style={{ minWidth: '150px' }}>
                       <label style={{ fontSize: '0.75rem' }}>Categoría Gasto</label>
                       <select className="form-control" value={newExpense.clasificacion} onChange={(e) => setNewExpense({ ...newExpense, clasificacion: e.target.value })}>
-                        <option value="INSUMOS">INSUMOS</option>
+                        <option value="MATERIALES">Item N°2 - Repuestos / Materiales</option>
+                        <option value="INSUMOS">Item N°3 - Insumos y EPP</option>
+                        <option value="TERCEROS">Item N°4 - Servicios de Terceros</option>
+                        <option value="Combustible">Combustible y Transportes</option>
+                        <option value="Peaje">Peajes y Pasajes</option>
                         <option value="Almuerzo">Almuerzo / Alimentación</option>
-                        <option value="Plotteo">Plotteo de Planos</option>
-                        <option value="Peaje">Peajes y Transportes</option>
-                        <option value="Combustible">Combustible</option>
-                        <option value="Otros">Otros</option>
+                        <option value="Otros">Otros Gastos</option>
                       </select>
                     </div>
                     <div className="form-group" style={{ width: '130px' }}>
@@ -1282,12 +1283,13 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 <div className="form-group flex-grow">
                   <label>Categoría Gasto</label>
                   <select className="form-control" value={editingExpense.clasificacion} onChange={(e) => setEditingExpense({ ...editingExpense, clasificacion: e.target.value })}>
-                    <option value="INSUMOS">INSUMOS</option>
+                    <option value="MATERIALES">Item N°2 - Repuestos / Materiales</option>
+                    <option value="INSUMOS">Item N°3 - Insumos y EPP</option>
+                    <option value="TERCEROS">Item N°4 - Servicios de Terceros</option>
+                    <option value="Combustible">Combustible y Transportes</option>
+                    <option value="Peaje">Peajes y Pasajes</option>
                     <option value="Almuerzo">Almuerzo / Alimentación</option>
-                    <option value="Plotteo">Plotteo de Planos</option>
-                    <option value="Peaje">Peajes y Transportes</option>
-                    <option value="Combustible">Combustible</option>
-                    <option value="Otros">Otros</option>
+                    <option value="Otros">Otros Gastos</option>
                   </select>
                 </div>
                 <div className="form-group flex-grow">
