@@ -425,8 +425,16 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const expPct = budget > 0 ? Math.min((totalExpenses / budget) * 100, 100 - hhPct) : 0;
   const remainingPct = 100 - hhPct - expPct;
 
-  // Estados pipeline
-  const estadosList = ['SP', 'Presupuestada', 'Aprobada', 'En Proceso', 'Terminada', 'Liquidada', 'Facturada'];
+  // 5 Etapas Oficiales de Avance
+  const STAGES_LIST = [
+    { id: 'SP', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
+    { id: 'En Proceso', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['Presupuestada', 'Aprobada', 'En Proceso'] },
+    { id: 'Liquidada', name: '3. Liquidar', color: '#06b6d4', statuses: ['Terminada', 'Liquidada'] },
+    { id: 'Facturada', name: '4. Facturar', color: '#10b981', statuses: ['Facturada'] },
+    { id: 'Cerrada', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada'] }
+  ];
+
+  const currentStageIndex = STAGES_LIST.findIndex(s => s.statuses.includes(ot.estado));
 
   return (
     <div className="dashboard-container">
@@ -457,32 +465,64 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
         </div>
       </div>
 
-      {/* Visual Pipeline Status */}
-      <div className="panel-card" style={{ padding: '1rem 1.5rem', marginBottom: '2rem' }}>
-        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '1rem', fontWeight: 600 }}>Estado de la Orden de Trabajo</h4>
+      {/* Visual Pipeline Status (5 Etapas de Avance) */}
+      <div className="panel-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem' }}>
+        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '1rem', fontWeight: 600 }}>
+          Estado de Avance de la Orden de Trabajo (Etapa: <strong style={{ color: STAGES_LIST[currentStageIndex >= 0 ? currentStageIndex : 0].color }}>{STAGES_LIST[currentStageIndex >= 0 ? currentStageIndex : 0].name}</strong>)
+        </h4>
         <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', overflowX: 'auto', padding: '0.5rem 0' }}>
-          {estadosList.map((est, i) => {
-            const isActive = estadosList.indexOf(ot.estado) >= i;
-            const isCurrent = ot.estado === est;
+          {STAGES_LIST.map((stage, i) => {
+            const isActive = currentStageIndex >= i;
+            const isCurrent = currentStageIndex === i;
             return (
-              <div key={est} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2, flex: 1, minWidth: '80px', cursor: userRole === 'admin' ? 'pointer' : 'default' }} onClick={() => userRole === 'admin' ? handleStatusChange(est) : showToast('Solo el Administrador puede cambiar el estado de la OT', 'danger')}>
+              <div 
+                key={stage.id} 
+                style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  zIndex: 2, 
+                  flex: 1, 
+                  minWidth: '100px', 
+                  cursor: ['admin', 'supervisor'].includes(userRole) ? 'pointer' : 'default' 
+                }} 
+                onClick={() => {
+                  if (['admin', 'supervisor'].includes(userRole)) {
+                    handleStatusChange(stage.id);
+                  } else {
+                    showToast('No tienes permisos para cambiar el estado de la OT', 'danger');
+                  }
+                }}
+              >
                 <div style={{
-                  width: '24px',
-                  height: '24px',
+                  width: '32px',
+                  height: '32px',
                   borderRadius: '50%',
-                  background: isCurrent ? 'var(--primary)' : isActive ? 'var(--accent-success)' : 'rgba(255,255,255,0.05)',
-                  border: '2px solid',
-                  borderColor: isCurrent ? '#fff' : isActive ? 'transparent' : 'var(--panel-border)',
+                  background: isCurrent ? stage.color : isActive ? stage.color : 'rgba(255,255,255,0.05)',
+                  border: '3px solid',
+                  borderColor: isCurrent ? '#ffffff' : isActive ? 'transparent' : 'var(--panel-border)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '0.7rem',
+                  fontSize: '0.85rem',
                   fontWeight: 'bold',
-                  color: isActive || isCurrent ? '#fff' : 'var(--text-muted)'
+                  color: isActive || isCurrent ? '#ffffff' : 'var(--text-muted)',
+                  boxShadow: isCurrent ? `0 0 12px ${stage.color}` : 'none'
                 }}>
                   {i + 1}
                 </div>
-                <span style={{ fontSize: '0.75rem', marginTop: '0.5rem', fontWeight: isCurrent ? '700' : '500', color: isCurrent ? 'var(--text-primary)' : isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>{est}</span>
+                <span style={{ 
+                  fontSize: '0.8rem', 
+                  marginTop: '0.5rem', 
+                  fontWeight: isCurrent ? '800' : '600', 
+                  color: isCurrent ? stage.color : isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  textTransform: 'uppercase'
+                }}>
+                  {stage.name}
+                </span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                  ({ot.estado && stage.statuses.includes(ot.estado) ? ot.estado : stage.statuses[0]})
+                </span>
               </div>
             );
           })}
