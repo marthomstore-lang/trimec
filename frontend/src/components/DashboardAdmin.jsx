@@ -120,11 +120,11 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
         method: 'POST',
         body: JSON.stringify(newItem)
       });
-      showToast('Consumible registrado con éxito', 'success');
+      showToast('Consumible guardado con éxito', 'success');
       setShowItemModal(false);
       fetchInventario();
     } catch (err) {
-      showToast('Error al guardar consumible', 'danger');
+      showToast(err.message || 'Error al guardar consumible', 'danger');
     }
   };
 
@@ -850,7 +850,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', descripcion: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 }); setShowItemModal(true); }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', descripcion: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0, isEditing: false }); setShowItemModal(true); }}>
                       + Nuevo Artículo
                     </button>
                     <button className="btn btn-primary btn-sm" onClick={() => { setNewMov({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' }); setShowMovModal(true); }}>
@@ -888,7 +888,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                           <td className="text-right notranslate">${Math.round(item.valor_unitario).toLocaleString('es-CL')}</td>
                           <td className="text-right notranslate" style={{ fontWeight: 600 }}>${Math.round(item.stock * item.valor_unitario).toLocaleString('es-CL')}</td>
                           <td>
-                            <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => { setNewItem(item); setShowItemModal(true); }}>
+                            <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => { setNewItem({ ...item, isEditing: true }); setShowItemModal(true); }}>
                               ✏️
                             </button>
                           </td>
@@ -1441,7 +1441,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
             <form onSubmit={handleSaveItem}>
               <div className="form-group">
                 <label>SKU (Código único)</label>
-                <input type="text" className="form-control" placeholder="Ej: AN002" value={newItem.sku} onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} disabled={!!newItem.stock && newItem.sku} required />
+                <input type="text" className="form-control" placeholder="Ej: AN002" value={newItem.sku} onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} disabled={Boolean(newItem.isEditing || (newItem.sku && inventario.some(i => i.sku === newItem.sku)))} required />
               </div>
               <div className="form-group mt-3">
                 <label>Descripción / Nombre</label>

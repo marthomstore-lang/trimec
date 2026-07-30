@@ -929,27 +929,41 @@ app.get('/api/inventario', authenticate, async (req, res) => {
 });
 
 app.post('/api/inventario', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario } = req.body;
+  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida } = req.body;
   if (!sku || !descripcion) {
     return res.status(400).json({ message: 'SKU y descripción son obligatorios' });
   }
   try {
-    const existing = await get('SELECT sku FROM inventario WHERE sku = ?', [sku]);
+    const cleanSku = String(sku).trim();
+    const existing = await get('SELECT sku FROM inventario WHERE sku = ?', [cleanSku]);
+    
+    const stockVal = stock !== undefined && stock !== null && stock !== '' ? parseFloat(stock) : 0.0;
+    const valorVal = valor_unitario !== undefined && valor_unitario !== null && valor_unitario !== '' ? parseFloat(valor_unitario) : 0.0;
+
+    const safeStock = isNaN(stockVal) ? 0.0 : stockVal;
+    const safeValor = isNaN(valorVal) ? 0.0 : valorVal;
+    const safeProv = proveedor || null;
+    const safeFecha = fecha_ultimo_pedido || null;
+    const safeUbic = ubicacion || null;
+    const safeFam = familia || null;
+    const safeUni = unidad_medida || null;
+
     if (existing) {
       await run(`
         UPDATE inventario 
-        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?
+        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?, familia = ?, unidad_medida = ?
         WHERE sku = ?
-      `, [descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0, sku]);
+      `, [descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeFam, safeUni, cleanSku]);
     } else {
       await run(`
-        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [sku, descripcion, proveedor, fecha_ultimo_pedido, parseFloat(stock) || 0.0, ubicacion, parseFloat(valor_unitario) || 0.0]);
+        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [cleanSku, descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeFam, safeUni]);
     }
-    res.json({ sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario });
+    res.json({ sku: cleanSku, descripcion, proveedor: safeProv, fecha_ultimo_pedido: safeFecha, stock: safeStock, ubicacion: safeUbic, valor_unitario: safeValor, familia: safeFam, unidad_medida: safeUni });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error al guardar inventario:', error);
+    res.status(500).json({ error: error.message, message: error.message });
   }
 });
 
