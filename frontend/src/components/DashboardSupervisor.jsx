@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../utils/api';
 
 const WORKFLOW_STAGES = [
-  { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
   { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['En Ejecución', 'Presupuestada', 'Aprobada', 'En Proceso'] }
 ];
 

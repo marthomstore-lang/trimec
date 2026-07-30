@@ -312,7 +312,7 @@ app.get('/api/ots', authenticate, async (req, res) => {
   try {
     let whereClause = '';
     if (req.user && req.user.rol === 'supervisor') {
-      whereClause = "WHERE o.estado IN ('SP', 'Presupuestada', 'Aprobada', 'En Proceso')";
+      whereClause = "WHERE o.estado IN ('En Ejecución', 'Presupuestada', 'Aprobada', 'En Proceso')";
     }
     const ots = await query(`
       SELECT o.*, c.razon_social as cliente_nombre 
