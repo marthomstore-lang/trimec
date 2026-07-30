@@ -92,13 +92,13 @@ export const run = (sql, params = []) => {
     // Postgres requiere RETURNING para emular lastID de inserción
     if (finalSql.trim().toUpperCase().startsWith('INSERT')) {
       if (!finalSql.toUpperCase().includes('RETURNING')) {
-        finalSql += ' RETURNING id';
+        finalSql += ' RETURNING *';
       }
     }
     return pgPool.query(finalSql, params).then(res => {
       const firstRow = res.rows[0];
       return { 
-        id: firstRow ? firstRow.id : null,
+        id: firstRow ? (firstRow.id || firstRow.sku || null) : null,
         changes: res.rowCount 
       };
     });
