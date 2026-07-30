@@ -11,6 +11,48 @@ const DEFAULT_NOTAS = `1.- Solo se aceptará como válida, la cotización enviad
 5.3.- Llamado de emergencia, domingos y festivos, recargo del 100% por sobre la hora normal.-
 6.- Se considera llamado de EMERGENCIA, solicitud de atención inmediata y/o durante el presente día en curso.`;
 
+const DEFAULT_PLANTILLAS = [
+  {
+    id: 'bucalemu_std',
+    name: '📌 1. Estándar Faena Bucalemu',
+    faena: 'FAENA BUCALEMU.-',
+    notas: DEFAULT_NOTAS
+  },
+  {
+    id: 'cholguan_transporte',
+    name: '📌 2. Faena Cholguán (Con Peajes y Transportes)',
+    faena: 'FAENA CHOLGUAN.-',
+    notas: `1.- Presupuesto válido solo en formato PDF enviado por Trimec SpA.
+2.- Validez de la oferta: 5 días hábiles a contar de la fecha de emisión.
+3.- Requisito indispensable: Orden de Compra o Solicitud de Pedido autorizada previa al inicio del trabajo.
+4.- Incluye traslados, peajes y kilometraje tramo Cholguán - Bucalemu.
+5.- Garantía de trabajos y repuestos: 3 meses contra fallas de fabricación o montaje.
+6.- Horario ordinario: Lunes a Jueves 08:15 a 17:45 hrs / Viernes 08:15 a 14:00 hrs.
+7.- Trabajos fuera de horario o días festivos con recargo del 100%.`
+  },
+  {
+    id: 'taller_maestranza',
+    name: '📌 3. Servicios en Taller / Maestranza (Sin Flete)',
+    faena: 'MAESTRANZA CAMPANARIO.-',
+    notas: `1.- Cotización válida únicamente en formato PDF enviado por correo corporativo.
+2.- Presupuesto válido por 7 días corridos.
+3.- Los trabajos se ejecutarán en dependencias de Maestranza Trimec SpA (Campanario).
+4.- El retiro y transporte de las piezas o componentes corren por cuenta del cliente salvo indicación contraria.
+5.- Garantía de fabricación y mecanizado: 3 meses.
+6.- Pago contra recepción conforme e informe técnico de entrega.`
+  },
+  {
+    id: 'emergencia_247',
+    name: '⚡ 4. Atenciones de Emergencia 24/7 (Recargo 100%)',
+    faena: 'FAENA EMERGENCIA 24/7.-',
+    notas: `1.- Presupuesto de atención prioritaria inmediata (Llamado de Emergencia).
+2.- Validez de la cotización: 48 horas.
+3.- Todos los trabajos realizados en horario nocturno, domingos y festivos aplican un recargo del 100% en HH.
+4.- El cliente deberá proveer autorización formal o correo de respaldo previo al despliegue del equipo técnico.
+5.- Garantía del servicio: 3 meses bajo condiciones normales de operación.`
+  }
+];
+
 const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [ot, setOt] = useState(null);
   const [hhList, setHhList] = useState([]);
@@ -29,6 +71,57 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   // Notes & Faena Modal State
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [notesForm, setNotesForm] = useState({ faena: '', notas_presupuesto: '' });
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [customTemplates, setCustomTemplates] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trimec_notas_plantillas');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const handleSelectTemplate = (templateId) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) return;
+    const allTemplates = [...DEFAULT_PLANTILLAS, ...customTemplates];
+    const found = allTemplates.find(t => t.id === templateId);
+    if (found) {
+      setNotesForm({
+        faena: found.faena,
+        notas_presupuesto: found.notas
+      });
+      showToast(`Cargada plantilla: "${found.name.replace(/^[📌⚡⭐]\s*/, '')}"`, 'info');
+    }
+  };
+
+  const handleSaveAsNewTemplate = () => {
+    const name = prompt('Ingresa un nombre descriptivo para esta nueva plantilla de notas (Ej: Faena Minera / Horario Nocturno):');
+    if (!name || !name.trim()) return;
+    
+    const newTpl = {
+      id: 'custom_' + Date.now(),
+      name: `⭐ ${name.trim()}`,
+      faena: notesForm.faena,
+      notas: notesForm.notas_presupuesto,
+      isCustom: true
+    };
+    
+    const updated = [...customTemplates, newTpl];
+    setCustomTemplates(updated);
+    localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
+    setSelectedTemplateId(newTpl.id);
+    showToast(`Plantilla "${name}" guardada con éxito`, 'success');
+  };
+
+  const handleDeleteTemplate = (templateId) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta plantilla personalizada?')) return;
+    const updated = customTemplates.filter(t => t.id !== templateId);
+    setCustomTemplates(updated);
+    localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
+    setSelectedTemplateId('');
+    showToast('Plantilla eliminada', 'info');
+  };
 
   // HH inline form
   const [showAddHhForm, setShowAddHhForm] = useState(false);
@@ -1332,14 +1425,66 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       {/* MODAL: CONFIGURAR NOTAS Y FAENA DEL PRESUPUESTO PDF */}
       {showNotesModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '650px' }}>
+          <div className="modal-content" style={{ maxWidth: '680px' }}>
             <div className="modal-header">
               <h3>Configurar Notas y Faena (Presupuesto PDF)</h3>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowNotesModal(false)}>Cerrar</button>
             </div>
             <form onSubmit={handleSaveNotes}>
+              
+              {/* PLANTILLAS PREDISENADAS Y PERSONALIZADAS */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', padding: '0.85rem', borderRadius: '0.5rem', marginBottom: '1.25rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.35rem', display: 'block' }}>
+                  📋 Cargar Plantilla de Faena / Notas Tipo
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <select 
+                    className="form-control" 
+                    style={{ fontSize: '0.85rem' }} 
+                    value={selectedTemplateId} 
+                    onChange={(e) => handleSelectTemplate(e.target.value)}
+                  >
+                    <option value="">-- Seleccionar Plantilla Prediseñada --</option>
+                    <optgroup label="Plantillas Estándar de la Empresa">
+                      {DEFAULT_PLANTILLAS.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </optgroup>
+                    {customTemplates.length > 0 && (
+                      <optgroup label="Mis Plantillas Personalizadas">
+                        {customTemplates.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm" 
+                    style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }} 
+                    onClick={handleSaveAsNewTemplate}
+                    title="Guardar los datos actuales como una nueva plantilla reutilizable"
+                  >
+                    💾 Guardar Plantilla
+                  </button>
+
+                  {customTemplates.some(t => t.id === selectedTemplateId) && (
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary btn-sm" 
+                      style={{ color: '#ef4444', borderColor: '#ef4444', fontSize: '0.75rem' }} 
+                      onClick={() => handleDeleteTemplate(selectedTemplateId)}
+                      title="Eliminar esta plantilla personalizada"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group mb-3">
-                <label>Faena / Ubicación Destacada (Encabezado PDF)</label>
+                <label style={{ fontWeight: 600 }}>Faena / Ubicación Destacada (Encabezado PDF)</label>
                 <input 
                   type="text" 
                   className="form-control" 
@@ -1351,12 +1496,15 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
 
               <div className="form-group mb-3">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <label style={{ margin: 0 }}>Notas y Condiciones Comerciales (Pie del PDF)</label>
+                  <label style={{ margin: 0, fontWeight: 600 }}>Notas y Condiciones Comerciales (Pie del PDF)</label>
                   <button 
                     type="button" 
                     className="btn btn-secondary btn-sm" 
                     style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }} 
-                    onClick={() => setNotesForm({ ...notesForm, notas_presupuesto: DEFAULT_NOTAS })}
+                    onClick={() => {
+                      setNotesForm({ ...notesForm, notas_presupuesto: DEFAULT_NOTAS });
+                      setSelectedTemplateId('bucalemu_std');
+                    }}
                   >
                     Restablecer Estándar
                   </button>
