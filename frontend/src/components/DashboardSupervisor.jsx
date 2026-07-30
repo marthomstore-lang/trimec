@@ -3,10 +3,16 @@ import api, { BASE_URL } from '../utils/api';
 
 const WORKFLOW_STAGES = [
   { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
-  { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['Presupuestada', 'Aprobada', 'En Proceso'] }
+  { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['En Ejecución', 'Presupuestada', 'Aprobada', 'En Proceso'] }
 ];
 
-const ALL_STATUS_SEQUENCE = ['SP', 'Presupuestada', 'Aprobada', 'En Proceso', 'Terminada', 'Liquidada', 'Facturada', 'Cerrada'];
+const ALL_STAGES_LIST = [
+  { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
+  { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['En Ejecución', 'Presupuestada', 'Aprobada', 'En Proceso'] },
+  { id: '3', name: '3. Liquidar', color: '#06b6d4', statuses: ['Liquidar', 'Terminada', 'Liquidada'] },
+  { id: '4', name: '4. Facturar', color: '#10b981', statuses: ['Facturar', 'Facturada'] },
+  { id: '5', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada', 'Cerradas'] }
+];
 
 const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
@@ -16,19 +22,22 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [error, setError] = useState('');
 
   const handleMoveStatus = async (otId, currentStatus, direction) => {
-    const currentIndex = ALL_STATUS_SEQUENCE.indexOf(currentStatus);
-    const newIndex = currentIndex + direction;
-    if (newIndex >= 0 && newIndex < ALL_STATUS_SEQUENCE.length) {
-      const nextStatus = ALL_STATUS_SEQUENCE[newIndex];
+    let currentIdx = ALL_STAGES_LIST.findIndex(s => s.statuses.includes(currentStatus));
+    if (currentIdx === -1) currentIdx = 0;
+
+    const nextIdx = currentIdx + direction;
+    if (nextIdx >= 0 && nextIdx < ALL_STAGES_LIST.length) {
+      const nextStage = ALL_STAGES_LIST[nextIdx];
+      const nextStatus = nextStage.statuses[0];
       try {
         await api(`/ots/${otId}`, {
           method: 'PUT',
           body: JSON.stringify({ estado: nextStatus })
         });
-        if (['Terminada', 'Liquidada', 'Facturada', 'Cerrada'].includes(nextStatus)) {
-          showToast(`OT ${otId} lista. Avanzó a ${nextStatus} y fue enviada a Administración`, 'success');
+        if (nextIdx >= 2) {
+          showToast(`OT ${otId} enviada a Administración (${nextStage.name})`, 'success');
         } else {
-          showToast(`OT ${otId}: Estado cambiado a ${nextStatus}`, 'success');
+          showToast(`OT ${otId}: Movida a ${nextStage.name}`, 'success');
         }
         fetchData();
       } catch (err) {
