@@ -1,13 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../utils/api';
 
+const WORKFLOW_STAGES = [
+  { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
+  { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['Presupuestada', 'Aprobada', 'En Proceso'] },
+  { id: '3', name: '3. Liquidar', color: '#06b6d4', statuses: ['Terminada', 'Liquidada'] },
+  { id: '4', name: '4. Facturar', color: '#10b981', statuses: ['Facturada'] },
+  { id: '5', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada'] }
+];
+
+const ALL_STATUS_SEQUENCE = ['SP', 'Presupuestada', 'Aprobada', 'En Proceso', 'Terminada', 'Liquidada', 'Facturada', 'Cerrada'];
+
 const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
   const [filtroEstadoOt, setFiltroEstadoOt] = useState('Todas');
+  const [selectedStageFilter, setSelectedStageFilter] = useState(null);
   const [clients, setClients] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const handleMoveStatus = async (otId, currentStatus, direction) => {
+    const currentIndex = ALL_STATUS_SEQUENCE.indexOf(currentStatus);
+    const newIndex = currentIndex + direction;
+    if (newIndex >= 0 && newIndex < ALL_STATUS_SEQUENCE.length) {
+      const nextStatus = ALL_STATUS_SEQUENCE[newIndex];
+      try {
+        await api(`/ots/${otId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ estado: nextStatus })
+        });
+        showToast(`OT ${otId}: Estado cambiado a ${nextStatus}`, 'success');
+        fetchData();
+      } catch (err) {
+        showToast(err.message || 'Error al cambiar estado', 'danger');
+      }
+    }
+  };
 
   // Modals / Form states
   const [showClientModal, setShowClientModal] = useState(false);
@@ -565,11 +594,19 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const totalProfit = totalRevenue - totalCost;
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-  const filteredOts = ots.filter(ot => 
-    ot.id.toString().includes(searchQuery) ||
-    ot.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ot.detalle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredOts = ots.filter(ot => {
+    const matchesSearch = ot.id.toString().includes(searchQuery) ||
+      ot.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ot.detalle.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    
+    if (selectedStageFilter) {
+      const stage = WORKFLOW_STAGES.find(s => s.id === selectedStageFilter);
+      return stage ? stage.statuses.includes(ot.estado) : true;
+    }
+    return true;
+  });
 
   return (
     <div className="dashboard-container">
@@ -612,6 +649,52 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
           <div className="kpi-value notranslate" style={{ color: avgMargin >= 25 ? '#34d399' : avgMargin >= 0 ? '#fbbf24' : '#f87171' }}>
             {avgMargin.toFixed(1)}%
           </div>
+        </div>
+      </div>
+
+      {/* WORKFLOW STAGES FILTER BAR */}
+      <div className="panel-card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+            Etapas de Avance del Trabajo
+          </h4>
+          {selectedStageFilter && (
+            <button 
+              className="btn btn-secondary btn-sm" 
+              style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} 
+              onClick={() => setSelectedStageFilter(null)}
+            >
+              Ver Todas las OTs ({ots.length})
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+          {WORKFLOW_STAGES.map((stage) => {
+            const count = ots.filter(o => stage.statuses.includes(o.estado)).length;
+            const isSelected = selectedStageFilter === stage.id;
+            return (
+              <div
+                key={stage.id}
+                onClick={() => setSelectedStageFilter(isSelected ? null : stage.id)}
+                style={{
+                  background: isSelected ? stage.color : 'rgba(255,255,255,0.03)',
+                  color: isSelected ? '#ffffff' : 'var(--text-primary)',
+                  border: `2px solid ${stage.color}`,
+                  borderRadius: '0.75rem',
+                  padding: '0.75rem 0.5rem',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                  boxShadow: isSelected ? `0 4px 14px ${stage.color}55` : 'none',
+                  transform: isSelected ? 'scale(1.02)' : 'scale(1)'
+                }}
+              >
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1 }}>{count}</div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, marginTop: '0.35rem', textTransform: 'uppercase' }}>{stage.name}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -696,7 +779,25 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ padding: '0.2rem 0.35rem', fontSize: '0.75rem' }} 
+                            title="Retroceder Estado"
+                            onClick={() => handleMoveStatus(ot.id, ot.estado, -1)}
+                            disabled={ot.estado === 'SP'}
+                          >
+                            ◀️
+                          </button>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ padding: '0.2rem 0.35rem', fontSize: '0.75rem' }} 
+                            title="Avanzar Estado"
+                            onClick={() => handleMoveStatus(ot.id, ot.estado, 1)}
+                            disabled={ot.estado === 'Cerrada'}
+                          >
+                            ▶️
+                          </button>
                           <button className="btn btn-secondary btn-sm" onClick={() => onSelectOt(ot.id)}>
                             🔍 Gestionar
                           </button>

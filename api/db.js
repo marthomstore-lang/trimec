@@ -164,6 +164,12 @@ export const initDb = async () => {
       ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS fecha_proyectada_presupuesto VARCHAR(255);
     `).catch(err => console.log('Error adding fecha_proyectada_presupuesto to postgres:', err.message));
     await pgPool.query(`
+      ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS notas_presupuesto TEXT;
+    `).catch(err => console.log('Error adding notas_presupuesto to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS faena TEXT;
+    `).catch(err => console.log('Error adding faena to postgres:', err.message));
+    await pgPool.query(`
       ALTER TABLE inventario ADD COLUMN IF NOT EXISTS familia VARCHAR(100);
     `).catch(err => console.log('Error adding familia to postgres:', err.message));
     await pgPool.query(`
@@ -220,6 +226,14 @@ export const initDb = async () => {
         const hasFechaProj = otCols.some(c => c.name === 'fecha_proyectada_presupuesto');
         if (!hasFechaProj) {
           await run("ALTER TABLE ordenes_trabajo ADD COLUMN fecha_proyectada_presupuesto TEXT");
+        }
+        const hasNotas = otCols.some(c => c.name === 'notas_presupuesto');
+        if (!hasNotas) {
+          await run("ALTER TABLE ordenes_trabajo ADD COLUMN notas_presupuesto TEXT");
+        }
+        const hasFaena = otCols.some(c => c.name === 'faena');
+        if (!hasFaena) {
+          await run("ALTER TABLE ordenes_trabajo ADD COLUMN faena TEXT");
         }
       }
     } catch (e) { }

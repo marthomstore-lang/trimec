@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../utils/api';
 
+const DEFAULT_NOTAS = `1.- Solo se aceptará como válida, la cotización enviada en formato PDF
+2.- Este presupuesto tiene una validez de cinco días hábiles, posteriores a eso se deberan recotizar Item N° 2 y 3
+3.- La aprobación de presupuesto debera venir acompañada de la correspondiente Orden de Compra pedido o solicitud de pedido, según corresponda.
+4.- Garantía por 3 meses.
+5.- Jornada de trabajo
+5.1.- Horario ordinario : Lunes a Jueves de 08:15am a 17:45pm / Viernes 08:15am a 14:00pm.-
+5.2.- Horario extraordinario programado con al menos 48 horas de anticipación: Lunes a Jueves de 17:46pm a 08:15am / Viernes 14:01pm, sabi
+5.3.- Llamado de emergencia, domingos y festivos, recargo del 100% por sobre la hora normal.-
+6.- Se considera llamado de EMERGENCIA, solicitud de atención inmediata y/o durante el presente día en curso.`;
+
 const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [ot, setOt] = useState(null);
   const [hhList, setHhList] = useState([]);
@@ -15,6 +25,10 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [editForm, setEditForm] = useState(null);
   const [clients, setClients] = useState([]);
   const [workers, setWorkers] = useState([]);
+
+  // Notes & Faena Modal State
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [notesForm, setNotesForm] = useState({ faena: '', notas_presupuesto: '' });
 
   // HH inline form
   const [showAddHhForm, setShowAddHhForm] = useState(false);
@@ -73,6 +87,10 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       setFiles(filesData);
       setWorkers(workersData);
       setEditForm({ ...otData, nuevo_id: otData.id, modificar_id: false });
+      setNotesForm({
+        faena: otData.faena || 'FAENA BUCALEMU.-',
+        notas_presupuesto: otData.notas_presupuesto || DEFAULT_NOTAS
+      });
       setInventario(inventarioData);
       setInforme(informeData);
       if (informeData) {
@@ -84,6 +102,21 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       setError(err.message || 'Error al cargar los detalles de la OT');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveNotes = async (e) => {
+    e.preventDefault();
+    try {
+      await api(`/ots/${otId}`, {
+        method: 'PUT',
+        body: JSON.stringify(notesForm)
+      });
+      showToast('Notas del presupuesto actualizadas con éxito', 'success');
+      setShowNotesModal(false);
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al guardar notas', 'danger');
     }
   };
 
@@ -408,6 +441,11 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          {['admin', 'supervisor'].includes(userRole) && (
+            <button className="btn btn-secondary" onClick={() => setShowNotesModal(true)}>
+              📝 Configurar Notas / Faena
+            </button>
+          )}
           {userRole === 'admin' && (
             <button className="btn btn-secondary" onClick={() => setIsEditing(!isEditing)}>
               {isEditing ? 'Cancelar Edición' : '⚙️ Editar OT'}
@@ -1244,6 +1282,60 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
               )}
 
               <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Guardar Cambios</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIGURAR NOTAS Y FAENA DEL PRESUPUESTO PDF */}
+      {showNotesModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '650px' }}>
+            <div className="modal-header">
+              <h3>Configurar Notas y Faena (Presupuesto PDF)</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowNotesModal(false)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleSaveNotes}>
+              <div className="form-group mb-3">
+                <label>Faena / Ubicación Destacada (Encabezado PDF)</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Ej: FAENA BUCALEMU.-" 
+                  value={notesForm.faena} 
+                  onChange={(e) => setNotesForm({ ...notesForm, faena: e.target.value })} 
+                />
+              </div>
+
+              <div className="form-group mb-3">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ margin: 0 }}>Notas y Condiciones Comerciales (Pie del PDF)</label>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm" 
+                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }} 
+                    onClick={() => setNotesForm({ ...notesForm, notas_presupuesto: DEFAULT_NOTAS })}
+                  >
+                    Restablecer Estándar
+                  </button>
+                </div>
+                <textarea 
+                  className="form-control" 
+                  rows="9" 
+                  style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                  value={notesForm.notas_presupuesto} 
+                  onChange={(e) => setNotesForm({ ...notesForm, notas_presupuesto: e.target.value })} 
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowNotesModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  Guardar y Actualizar PDF
+                </button>
+              </div>
             </form>
           </div>
         </div>

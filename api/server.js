@@ -323,12 +323,15 @@ app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
 // Obtener lista de OTs con sus costos agregados y márgenes
 app.get('/api/ots', authenticate, async (req, res) => {
   try {
-    // Si es Supervisor, solo ve OTs operativas y activas (no cerradas o liquidadas si así se configura, pero puede ver todas)
-    // Mostramos todas pero agregadas con cálculo de margen
+    let whereClause = '';
+    if (req.user && req.user.rol === 'supervisor') {
+      whereClause = "WHERE o.estado IN ('SP', 'Presupuestada', 'Aprobada', 'En Proceso')";
+    }
     const ots = await query(`
       SELECT o.*, c.razon_social as cliente_nombre 
       FROM ordenes_trabajo o 
       JOIN clientes c ON o.cliente_id = c.id
+      ${whereClause}
       ORDER BY o.id DESC
     `);
 
@@ -488,17 +491,23 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
 
 app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
-  const { nuevo_id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
+  const body = req.body;
   
   try {
+    const otExisting = await get('SELECT * FROM ordenes_trabajo WHERE id = ?', [id]);
+    if (!otExisting) {
+      return res.status(404).json({ error: 'OT no encontrada' });
+    }
+
+    const nuevo_id = body.nuevo_id;
+    const targetId = (nuevo_id && nuevo_id !== id) ? nuevo_id : id;
+
     if (nuevo_id && nuevo_id !== id) {
-      // Verificar si el nuevo ID ya existe
       const existing = await get('SELECT id FROM ordenes_trabajo WHERE id = ?', [nuevo_id]);
       if (existing) {
         return res.status(400).json({ message: 'El nuevo número de OT ya existe.' });
       }
       
-      // Actualizar en cascada en todas las tablas relacionales locales
       await run('UPDATE registro_hh SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
       await run('UPDATE gastos_diarios SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
       await run('UPDATE facturacion SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
@@ -506,24 +515,32 @@ app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async 
       await run('UPDATE activos SET asignado_a_ot_id = ? WHERE asignado_a_ot_id = ?', [nuevo_id, id]);
       await run('UPDATE informes_tecnicos SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
       await run('UPDATE inventario_movimientos SET ot_id = ? WHERE ot_id = ?', [nuevo_id, id]);
-      
-      // Finalmente actualizar el registro principal de la OT
-      await run(
-        `UPDATE ordenes_trabajo 
-         SET id = ?, cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
-         WHERE id = ?`,
-        [nuevo_id, cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id, id]
-      );
-    } else {
-      await run(
-        `UPDATE ordenes_trabajo 
-         SET cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?
-         WHERE id = ?`,
-        [cliente_id, detalle, estado, es_emergencia ? 1 : 0, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto || null, id]
-      );
     }
-    res.json({ message: 'OT actualizada con éxito', nuevo_id: nuevo_id || id });
+
+    const updatedClienteId = body.cliente_id !== undefined ? body.cliente_id : otExisting.cliente_id;
+    const updatedDetalle = body.detalle !== undefined ? body.detalle : otExisting.detalle;
+    const updatedEstado = body.estado !== undefined ? body.estado : otExisting.estado;
+    const updatedEsEmergencia = body.es_emergencia !== undefined ? (body.es_emergencia ? 1 : 0) : otExisting.es_emergencia;
+    const updatedRecargo = body.recargo_emergencia !== undefined ? body.recargo_emergencia : otExisting.recargo_emergencia;
+    const updatedFechaSolicitud = body.fecha_solicitud !== undefined ? body.fecha_solicitud : otExisting.fecha_solicitud;
+    const updatedFechaAprobacion = body.fecha_aprobacion !== undefined ? body.fecha_aprobacion : otExisting.fecha_aprobacion;
+    const updatedFechaEntrega = body.fecha_entrega !== undefined ? body.fecha_entrega : otExisting.fecha_entrega;
+    const updatedMontoNeto = body.monto_neto_presupuesto !== undefined ? body.monto_neto_presupuesto : otExisting.monto_neto_presupuesto;
+    const updatedHhPresup = body.hh_presupuestadas !== undefined ? body.hh_presupuestadas : otExisting.hh_presupuestadas;
+    const updatedFechaProj = body.fecha_proyectada_presupuesto !== undefined ? body.fecha_proyectada_presupuesto : otExisting.fecha_proyectada_presupuesto;
+    const updatedNotas = body.notas_presupuesto !== undefined ? body.notas_presupuesto : otExisting.notas_presupuesto;
+    const updatedFaena = body.faena !== undefined ? body.faena : otExisting.faena;
+
+    await run(
+      `UPDATE ordenes_trabajo 
+       SET id = ?, cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?, notas_presupuesto = ?, faena = ?
+       WHERE id = ?`,
+      [targetId, updatedClienteId, updatedDetalle, updatedEstado, updatedEsEmergencia, updatedRecargo, updatedFechaSolicitud, updatedFechaAprobacion, updatedFechaEntrega, updatedMontoNeto, updatedHhPresup, updatedFechaProj, updatedNotas, updatedFaena, id]
+    );
+
+    res.json({ message: 'OT actualizada con éxito', nuevo_id: targetId });
   } catch (error) {
+    console.error('Error al actualizar OT:', error);
     res.status(500).json({ error: error.message });
   }
 });

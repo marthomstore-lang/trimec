@@ -1,11 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../utils/api';
 
+const WORKFLOW_STAGES = [
+  { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
+  { id: '2', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['Presupuestada', 'Aprobada', 'En Proceso'] }
+];
+
+const ALL_STATUS_SEQUENCE = ['SP', 'Presupuestada', 'Aprobada', 'En Proceso', 'Terminada', 'Liquidada', 'Facturada', 'Cerrada'];
+
 const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
+  const [selectedStageFilter, setSelectedStageFilter] = useState(null);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const handleMoveStatus = async (otId, currentStatus, direction) => {
+    const currentIndex = ALL_STATUS_SEQUENCE.indexOf(currentStatus);
+    const newIndex = currentIndex + direction;
+    if (newIndex >= 0 && newIndex < ALL_STATUS_SEQUENCE.length) {
+      const nextStatus = ALL_STATUS_SEQUENCE[newIndex];
+      try {
+        await api(`/ots/${otId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ estado: nextStatus })
+        });
+        if (['Terminada', 'Liquidada', 'Facturada', 'Cerrada'].includes(nextStatus)) {
+          showToast(`OT ${otId} lista. Avanzó a ${nextStatus} y fue enviada a Administración`, 'success');
+        } else {
+          showToast(`OT ${otId}: Estado cambiado a ${nextStatus}`, 'success');
+        }
+        fetchData();
+      } catch (err) {
+        showToast(err.message || 'Error al cambiar estado', 'danger');
+      }
+    }
+  };
   const [activeTab, setActiveTab] = useState('ots'); // 'ots', 'bodega', 'hh', 'gastos'
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -264,55 +294,132 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
         <div>
           {/* TAB 1: ACTIVE OTS */}
           {activeTab === 'ots' && (() => {
-            const filteredOts = ots.filter(ot => 
-              ot.id.toString().includes(searchQuery) ||
-              ot.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              ot.detalle.toLowerCase().includes(searchQuery.toLowerCase())
-            );
+            const filteredOts = ots.filter(ot => {
+              const matchesSearch = ot.id.toString().includes(searchQuery) ||
+                ot.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                ot.detalle.toLowerCase().includes(searchQuery.toLowerCase());
+              
+              if (!matchesSearch) return false;
+              if (selectedStageFilter) {
+                const stage = WORKFLOW_STAGES.find(s => s.id === selectedStageFilter);
+                return stage ? stage.statuses.includes(ot.estado) : true;
+              }
+              return true;
+            });
             return (
-              <div className="panel-card">
-                <div className="panel-header" style={{ marginBottom: '1.5rem' }}>
-                  <h3>Órdenes de Trabajo en Ejecución</h3>
+              <div>
+                {/* WORKFLOW STAGES FILTER BAR SUPERVISOR */}
+                <div className="panel-card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                      Etapas de Avance del Supervisor (OTs Activas)
+                    </h4>
+                    {selectedStageFilter && (
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} 
+                        onClick={() => setSelectedStageFilter(null)}
+                      >
+                        Ver Todas ({ots.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                    {WORKFLOW_STAGES.map((stage) => {
+                      const count = ots.filter(o => stage.statuses.includes(o.estado)).length;
+                      const isSelected = selectedStageFilter === stage.id;
+                      return (
+                        <div
+                          key={stage.id}
+                          onClick={() => setSelectedStageFilter(isSelected ? null : stage.id)}
+                          style={{
+                            background: isSelected ? stage.color : 'rgba(255,255,255,0.03)',
+                            color: isSelected ? '#ffffff' : 'var(--text-primary)',
+                            border: `2px solid ${stage.color}`,
+                            borderRadius: '0.75rem',
+                            padding: '1rem',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            transition: 'all 0.2s ease',
+                            boxShadow: isSelected ? `0 4px 14px ${stage.color}55` : 'none',
+                            transform: isSelected ? 'scale(1.02)' : 'scale(1)'
+                          }}
+                        >
+                          <div style={{ fontSize: '1.6rem', fontWeight: 800, lineHeight: 1 }}>{count}</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, marginTop: '0.4rem', textTransform: 'uppercase' }}>{stage.name}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="search-container">
-                  <span className="search-icon-placeholder">🔍</span>
-                  <input 
-                    type="text" 
-                    className="search-control" 
-                    placeholder="Buscar OT activa..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
+                <div className="panel-card">
+                  <div className="panel-header" style={{ marginBottom: '1.5rem' }}>
+                    <h3>Órdenes de Trabajo en Ejecución</h3>
+                  </div>
 
-                <div className="ot-grid">
-                  {filteredOts.map(ot => (
-                    <div className="ot-card" key={ot.id}>
-                      <div className="ot-card-header">
-                        <span className="ot-card-num">OT {ot.id}</span>
-                        <span className={`badge badge-${ot.estado.toLowerCase().replace(' ', '')}`}>{ot.estado}</span>
+                  <div className="search-container">
+                    <span className="search-icon-placeholder">🔍</span>
+                    <input 
+                      type="text" 
+                      className="search-control" 
+                      placeholder="Buscar OT activa..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="ot-grid">
+                    {filteredOts.map(ot => (
+                      <div className="ot-card" key={ot.id}>
+                        <div className="ot-card-header">
+                          <span className="ot-card-num">OT {ot.id}</span>
+                          <span className={`badge badge-${ot.estado.toLowerCase().replace(' ', '')}`}>{ot.estado}</span>
+                        </div>
+                        <div className="ot-card-client">{ot.cliente_nombre}</div>
+                        <div className="ot-card-detail">{ot.detalle}</div>
+
+                        {/* Stage Progress Control */}
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ flex: 1, fontSize: '0.75rem' }} 
+                            title="Retroceder Estado"
+                            onClick={() => handleMoveStatus(ot.id, ot.estado, -1)}
+                            disabled={ot.estado === 'SP'}
+                          >
+                            ◀️ Retroceder
+                          </button>
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            style={{ flex: 1, fontSize: '0.75rem' }} 
+                            title="Avanzar Estado"
+                            onClick={() => handleMoveStatus(ot.id, ot.estado, 1)}
+                          >
+                            Avanzar ▶️
+                          </button>
+                        </div>
+
+                        <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => onSelectOt(ot.id)}>
+                            🔍 Ver Detalles y Costos
+                          </button>
+                          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => {
+                            const token = localStorage.getItem('trimec_token');
+                            window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
+                          }}>
+                            📄 Presupuesto PDF
+                          </button>
+                        </div>
                       </div>
-                      <div className="ot-card-client">{ot.cliente_nombre}</div>
-                      <div className="ot-card-detail">{ot.detalle}</div>
-                      <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => onSelectOt(ot.id)}>
-                          🔍 Ver Detalles y Costos
-                        </button>
-                        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => {
-                          const token = localStorage.getItem('trimec_token');
-                          window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
-                        }}>
-                          📄 Presupuesto PDF
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {filteredOts.length === 0 && (
-                    <p style={{ color: 'var(--text-secondary)', padding: '1rem', gridColumn: '1 / -1', textAlign: 'center' }}>
-                      No se encontraron OTs con los criterios de búsqueda.
-                    </p>
-                  )}
+                    ))}
+                    {filteredOts.length === 0 && (
+                      <p style={{ color: 'var(--text-secondary)', padding: '1rem', gridColumn: '1 / -1', textAlign: 'center' }}>
+                        No se encontraron OTs activas con los criterios seleccionados.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             );
