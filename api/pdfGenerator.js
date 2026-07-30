@@ -244,9 +244,12 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   const customNotesLines = ot.notas_presupuesto ? ot.notas_presupuesto.split('\n') : defaultNotes;
 
   let nY = currentY + 12;
+  doc.fontSize(6.5);
   customNotesLines.forEach(line => {
-    doc.fontSize(6.5).text(line, 40, nY, { width: 350 });
-    nY += 9;
+    if (!line.trim()) return;
+    const lineH = doc.heightOfString(line, { width: 350 });
+    doc.text(line, 40, nY, { width: 350 });
+    nY += lineH + 2;
   });
 
   // FIRMA Y TIMBRE (Right side)
