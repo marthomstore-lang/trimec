@@ -72,15 +72,16 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   // --- DETALLE DE TRABAJOS & RESUMEN DE LA OFERTA (SIDE BY SIDE) ---
   currentY += 36;
   const splitY = currentY;
+  const boxHeight = 92;
 
   // Box Left: DETALLE DE TRABAJOS PRESUPUESTADOS
-  doc.rect(40, splitY, 280, 75).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.rect(40, splitY, 280, boxHeight).strokeColor(borderGray).lineWidth(0.8).stroke();
   doc.rect(40, splitY, 280, 12).fill(headerBg);
   doc.fillColor(black).fontSize(8).text('DETALLE DE TRABAJOS PRESUPUESTADOS', 40, splitY + 2, { align: 'center', width: 280, bold: true });
   doc.fontSize(7).text(ot.detalle || '', 45, splitY + 16, { width: 270 });
 
   // Box Right: RESUMEN DE LA OFERTA TABLE
-  doc.rect(335, splitY, 235, 75).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.rect(335, splitY, 235, boxHeight).strokeColor(borderGray).lineWidth(0.8).stroke();
   doc.rect(335, splitY, 235, 12).fill(headerBg);
   doc.fillColor(black).fontSize(8).text('RESUMEN DE LA OFERTA', 335, splitY + 2, { align: 'center', width: 235, bold: true });
 
@@ -132,24 +133,24 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   const rY = splitY + 14;
   doc.fontSize(7)
     .text('Mano de Obra', 340, rY).text('$', 415, rY).text(totalHh > 0 ? totalHh.toLocaleString('es-CL') : '-', 480, rY, { align: 'right', width: 80 })
-    .text('Repuestos - Materiales', 340, rY + 8).text('$', 415, rY + 8).text(totalMateriales > 0 ? totalMateriales.toLocaleString('es-CL') : '-', 480, rY + 8, { align: 'right', width: 80 })
-    .text('Insumos', 340, rY + 16).text('$', 415, rY + 16).text(totalInsumos > 0 ? totalInsumos.toLocaleString('es-CL') : '-', 480, rY + 16, { align: 'right', width: 80 })
-    .text('Servicios de terceros', 340, rY + 24).text('$', 415, rY + 24).text(totalTerceros > 0 ? totalTerceros.toLocaleString('es-CL') : '-', 480, rY + 24, { align: 'right', width: 80 })
-    .text('Utilidad', 340, rY + 32).text('$', 415, rY + 32).text(utilidad > 0 ? utilidad.toLocaleString('es-CL') : '-', 480, rY + 32, { align: 'right', width: 80 });
+    .text('Repuestos - Materiales', 340, rY + 9).text('$', 415, rY + 9).text(totalMateriales > 0 ? totalMateriales.toLocaleString('es-CL') : '-', 480, rY + 9, { align: 'right', width: 80 })
+    .text('Insumos', 340, rY + 18).text('$', 415, rY + 18).text(totalInsumos > 0 ? totalInsumos.toLocaleString('es-CL') : '-', 480, rY + 18, { align: 'right', width: 80 })
+    .text('Servicios de terceros', 340, rY + 27).text('$', 415, rY + 27).text(totalTerceros > 0 ? totalTerceros.toLocaleString('es-CL') : '-', 480, rY + 27, { align: 'right', width: 80 })
+    .text('Utilidad', 340, rY + 36).text('$', 415, rY + 36).text(utilidad > 0 ? utilidad.toLocaleString('es-CL') : '-', 480, rY + 36, { align: 'right', width: 80 });
 
   // Highlight Valor Neto row
-  doc.rect(335, rY + 40, 235, 10).fill('#D9D9D9');
+  doc.rect(335, rY + 45, 235, 10).fill('#D9D9D9');
   doc.fillColor(black).fontSize(7.5)
-    .text('Valor Neto', 340, rY + 41, { bold: true })
-    .text('$', 415, rY + 41, { bold: true })
-    .text(netoTotal.toLocaleString('es-CL'), 480, rY + 41, { align: 'right', width: 80, bold: true });
+    .text('Valor Neto', 340, rY + 46, { bold: true })
+    .text('$', 415, rY + 46, { bold: true })
+    .text(netoTotal.toLocaleString('es-CL'), 480, rY + 46, { align: 'right', width: 80, bold: true });
 
   doc.fontSize(7)
-    .text('Iva', 340, rY + 51).text('$', 415, rY + 51).text(iva.toLocaleString('es-CL'), 480, rY + 51, { align: 'right', width: 80 })
-    .text('Total', 340, rY + 59, { bold: true }).text('$', 415, rY + 59, { bold: true }).text(totalG.toLocaleString('es-CL'), 480, rY + 59, { align: 'right', width: 80, bold: true });
+    .text('Iva', 340, rY + 57).text('$', 415, rY + 57).text(iva.toLocaleString('es-CL'), 480, rY + 57, { align: 'right', width: 80 })
+    .text('Total', 340, rY + 66, { bold: true }).text('$', 415, rY + 66, { bold: true }).text(totalG.toLocaleString('es-CL'), 480, rY + 66, { align: 'right', width: 80, bold: true });
 
   // --- ITEM N°1 - MANO DE OBRA ---
-  currentY += 82;
+  currentY += boxHeight + 12;
   doc.rect(40, currentY, 530, 12).fill(headerBg);
   doc.fillColor(black).fontSize(8).text('Item N°1 - MANO DE OBRA', 45, currentY + 2, { bold: true });
 
