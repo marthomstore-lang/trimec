@@ -81,6 +81,16 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     }
   });
 
+  // Custom Popups (Modals) State - Replacing native browser prompt/confirm
+  const [showSaveTplModal, setShowSaveTplModal] = useState(false);
+  const [newTplName, setNewTplName] = useState('');
+
+  const [showEditTplModal, setShowEditTplModal] = useState(false);
+  const [editingTplData, setEditingTplData] = useState({ id: '', name: '', faena: '', notas: '' });
+
+  const [showDeleteTplModal, setShowDeleteTplModal] = useState(false);
+  const [deletingTplId, setDeletingTplId] = useState('');
+
   const handleSelectTemplate = (templateId) => {
     setSelectedTemplateId(templateId);
     if (!templateId) return;
@@ -95,13 +105,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     }
   };
 
-  const handleSaveAsNewTemplate = () => {
-    const name = prompt('Ingresa un nombre descriptivo para esta nueva plantilla de notas (Ej: Faena Minera / Horario Nocturno):');
-    if (!name || !name.trim()) return;
+  const handleOpenSaveModal = () => {
+    setNewTplName('');
+    setShowSaveTplModal(true);
+  };
+
+  const handleConfirmSaveNewTemplate = (e) => {
+    e.preventDefault();
+    if (!newTplName || !newTplName.trim()) return;
     
+    const cleanName = newTplName.trim();
     const newTpl = {
       id: 'custom_' + Date.now(),
-      name: `⭐ ${name.trim()}`,
+      name: `⭐ ${cleanName}`,
       faena: notesForm.faena,
       notas: notesForm.notas_presupuesto,
       isCustom: true
@@ -111,16 +127,81 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     setCustomTemplates(updated);
     localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
     setSelectedTemplateId(newTpl.id);
-    showToast(`Plantilla "${name}" guardada con éxito`, 'success');
+    setShowSaveTplModal(false);
+    showToast(`Plantilla "${cleanName}" guardada exitosamente`, 'success');
   };
 
-  const handleDeleteTemplate = (templateId) => {
-    if (!window.confirm('¿Estás seguro de eliminar esta plantilla personalizada?')) return;
-    const updated = customTemplates.filter(t => t.id !== templateId);
+  const handleOpenEditModal = () => {
+    const allTemplates = [...DEFAULT_PLANTILLAS, ...customTemplates];
+    const found = allTemplates.find(t => t.id === selectedTemplateId);
+    if (found) {
+      setEditingTplData({
+        id: found.id,
+        name: found.name.replace(/^[📌⚡⭐]\s*/, ''),
+        faena: notesForm.faena,
+        notas: notesForm.notas_presupuesto,
+        isCustom: found.isCustom || false
+      });
+      setShowEditTplModal(true);
+    }
+  };
+
+  const handleConfirmUpdateTemplate = (e) => {
+    e.preventDefault();
+    if (!editingTplData.name.trim()) return;
+
+    if (editingTplData.isCustom) {
+      const updated = customTemplates.map(t => {
+        if (t.id === editingTplData.id) {
+          return {
+            ...t,
+            name: `⭐ ${editingTplData.name.trim()}`,
+            faena: editingTplData.faena,
+            notas: editingTplData.notas
+          };
+        }
+        return t;
+      });
+      setCustomTemplates(updated);
+      localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
+    } else {
+      // Si edita una plantilla estándar, la guarda como una nueva versión personalizada
+      const newTpl = {
+        id: 'custom_' + Date.now(),
+        name: `⭐ ${editingTplData.name.trim()} (Modificada)`,
+        faena: editingTplData.faena,
+        notas: editingTplData.notas,
+        isCustom: true
+      };
+      const updated = [...customTemplates, newTpl];
+      setCustomTemplates(updated);
+      localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
+      setSelectedTemplateId(newTpl.id);
+    }
+
+    setNotesForm({
+      faena: editingTplData.faena,
+      notas_presupuesto: editingTplData.notas
+    });
+
+    setShowEditTplModal(false);
+    showToast('Plantilla actualizada con éxito', 'success');
+  };
+
+  const handleOpenDeleteModal = (templateId) => {
+    setDeletingTplId(templateId);
+    setShowDeleteTplModal(true);
+  };
+
+  const handleConfirmDeleteTemplate = () => {
+    const updated = customTemplates.filter(t => t.id !== deletingTplId);
     setCustomTemplates(updated);
     localStorage.setItem('trimec_notas_plantillas', JSON.stringify(updated));
-    setSelectedTemplateId('');
-    showToast('Plantilla eliminada', 'info');
+    if (selectedTemplateId === deletingTplId) {
+      setSelectedTemplateId('');
+    }
+    setShowDeleteTplModal(false);
+    showToast('Plantilla personalizada eliminada', 'info');
   };
 
   // HH inline form
@@ -1463,18 +1544,30 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                     type="button" 
                     className="btn btn-secondary btn-sm" 
                     style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }} 
-                    onClick={handleSaveAsNewTemplate}
+                    onClick={handleOpenSaveModal}
                     title="Guardar los datos actuales como una nueva plantilla reutilizable"
                   >
-                    💾 Guardar Plantilla
+                    💾 Nueva Plantilla
                   </button>
+
+                  {selectedTemplateId && (
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary btn-sm" 
+                      style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }} 
+                      onClick={handleOpenEditModal}
+                      title="Editar o actualizar el nombre/notas de la plantilla seleccionada"
+                    >
+                      ✏️ Editar
+                    </button>
+                  )}
 
                   {customTemplates.some(t => t.id === selectedTemplateId) && (
                     <button 
                       type="button" 
                       className="btn btn-secondary btn-sm" 
                       style={{ color: '#ef4444', borderColor: '#ef4444', fontSize: '0.75rem' }} 
-                      onClick={() => handleDeleteTemplate(selectedTemplateId)}
+                      onClick={() => handleOpenDeleteModal(selectedTemplateId)}
                       title="Eliminar esta plantilla personalizada"
                     >
                       🗑️
@@ -1527,6 +1620,109 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL 1: GUARDAR NUEVA PLANTILLA */}
+      {showSaveTplModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>💾 Guardar Nueva Plantilla de Notas</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveTplModal(false)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleConfirmSaveNewTemplate}>
+              <div className="form-group mb-3">
+                <label style={{ fontWeight: 600 }}>Nombre Descriptivo de la Plantilla</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Ej: Faena Minera / Turno Nocturno" 
+                  value={newTplName} 
+                  onChange={(e) => setNewTplName(e.target.value)} 
+                  required 
+                  autoFocus 
+                />
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                <strong>Vista Previa de Datos a Guardar:</strong>
+                <div>• Faena: {notesForm.faena || '(Sin definir)'}</div>
+                <div>• Total de Cláusulas / Líneas: {notesForm.notas_presupuesto ? notesForm.notas_presupuesto.split('\n').length : 0}</div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowSaveTplModal(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">💾 Guardar Plantilla</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL 2: EDITAR / ACTUALIZAR PLANTILLA */}
+      {showEditTplModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+              <h3>✏️ Editar / Actualizar Plantilla de Notas</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowEditTplModal(false)}>Cerrar</button>
+            </div>
+            <form onSubmit={handleConfirmUpdateTemplate}>
+              <div className="form-group mb-3">
+                <label style={{ fontWeight: 600 }}>Nombre de la Plantilla</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={editingTplData.name} 
+                  onChange={(e) => setEditingTplData({ ...editingTplData, name: e.target.value })} 
+                  required 
+                />
+              </div>
+              <div className="form-group mb-3">
+                <label style={{ fontWeight: 600 }}>Faena Destacada</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={editingTplData.faena} 
+                  onChange={(e) => setEditingTplData({ ...editingTplData, faena: e.target.value })} 
+                />
+              </div>
+              <div className="form-group mb-3">
+                <label style={{ fontWeight: 600 }}>Contenido de Notas y Cláusulas</label>
+                <textarea 
+                  className="form-control" 
+                  rows="7" 
+                  style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                  value={editingTplData.notas} 
+                  onChange={(e) => setEditingTplData({ ...editingTplData, notas: e.target.value })} 
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowEditTplModal(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Actualizar y Aplicar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL 3: CONFIRMAR ELIMINACION DE PLANTILLA */}
+      {showDeleteTplModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h3 style={{ color: '#ef4444' }}>🗑️ Eliminar Plantilla</h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDeleteTplModal(false)}>Cerrar</button>
+            </div>
+            <div style={{ padding: '0.5rem 0 1.25rem 0', fontSize: '0.9rem' }}>
+              ¿Estás seguro de que deseas eliminar esta plantilla personalizada de forma definitiva?
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowDeleteTplModal(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary" style={{ background: '#ef4444', borderColor: '#ef4444' }} onClick={handleConfirmDeleteTemplate}>
+                Sí, Eliminar
+              </button>
+            </div>
           </div>
         </div>
       )}
