@@ -24,6 +24,9 @@ if (isPostgres) {
     connectionString: process.env.DATABASE_URL || '',
     ssl: { rejectUnauthorized: false }
   });
+  pgPool.on('error', (err) => {
+    console.error('Error en el pool de conexión a Supabase PostgreSQL:', err.message);
+  });
 } else {
   console.log('Conectado a la base de datos SQLite local.');
   if (process.env.VERCEL) {
