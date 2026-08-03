@@ -760,7 +760,7 @@ app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador'
   try {
     // 1. Ingresos por OTs Facturadas (Facturaciones donde el estado no sea Anulado)
     const ingresos = await query(`
-      SELECT STRFTIME('%Y-%m', o.fecha_solicitud) as mes, SUM(o.monto_neto_presupuesto) as total_ingreso
+      SELECT SUBSTR(o.fecha_solicitud, 1, 7) as mes, SUM(o.monto_neto_presupuesto) as total_ingreso
       FROM ordenes_trabajo o
       JOIN facturacion f ON f.ot_id = o.id
       WHERE f.nro_factura IS NOT NULL AND f.nro_factura != '' AND f.estado_pago != 'Anulado'
@@ -769,14 +769,14 @@ app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador'
 
     // 2. Egresos Fijos de Gastos Generales
     const egresosFijos = await query(`
-      SELECT STRFTIME('%Y-%m', fecha) as mes, SUM(valor_total) as total_egreso_fijo
+      SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_total) as total_egreso_fijo
       FROM gastos_generales
       GROUP BY mes
     `);
 
     // 3. Egresos Variables de OTs (Materiales y Comidas de OTs activas)
     const egresosOTs = await query(`
-      SELECT STRFTIME('%Y-%m', fecha) as mes, SUM(valor_neto) as total_egreso_ot
+      SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_neto) as total_egreso_ot
       FROM gastos_diarios
       GROUP BY mes
     `);
@@ -814,40 +814,70 @@ app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador'
 // Reporte de Rendimiento y Eficiencia Mensual de Personal
 app.get('/api/finanzas/rendimiento-personal', authenticate, checkRole(['admin']), async (req, res) => {
   try {
-    const currentMonth = new Date().toISOString().substring(0, 7); // ej: "2026-07"
+    let targetMonth = req.query.mes;
+    if (!targetMonth || targetMonth === 'null' || targetMonth === 'undefined') {
+      const currentMonth = new Date().toISOString().substring(0, 7);
+      const checkCurrent = await get(`SELECT COUNT(*) as count FROM registro_hh WHERE SUBSTR(fecha, 1, 7) = ?`, [currentMonth]);
+      if (checkCurrent && parseInt(checkCurrent.count) > 0) {
+        targetMonth = currentMonth;
+      } else {
+        const latestRecord = await get(`SELECT SUBSTR(fecha, 1, 7) as mes FROM registro_hh ORDER BY fecha DESC LIMIT 1`);
+        targetMonth = latestRecord && latestRecord.mes ? latestRecord.mes : currentMonth;
+      }
+    }
+
     const workers = await query('SELECT * FROM trabajadores ORDER BY nombre ASC');
     
     const performance = await Promise.all(
       workers.map(async (w) => {
-        // Horas totales del mes
-        const hoursSummary = await get(`
-          SELECT SUM(horas_normales + horas_extra) as total_horas 
-          FROM registro_hh 
-          WHERE trabajador_id = ? AND STRFTIME('%Y-%m', fecha) = ?
-        `, [w.id, currentMonth]);
-        
-        // Desglose de horas por OT
-        const breakdown = await query(`
-          SELECT r.ot_id, o.detalle as ot_detalle, SUM(r.horas_normales + r.horas_extra) as horas_ot
-          FROM registro_hh r
-          JOIN ordenes_trabajo o ON r.ot_id = o.id
-          WHERE r.trabajador_id = ? AND STRFTIME('%Y-%m', r.fecha) = ?
-          GROUP BY r.ot_id, o.detalle
-        `, [w.id, currentMonth]);
+        let hoursSummary;
+        let breakdown;
+
+        if (targetMonth === 'TODOS' || targetMonth === 'todos') {
+          hoursSummary = await get(`
+            SELECT SUM(horas_normales + horas_extra) as total_horas 
+            FROM registro_hh 
+            WHERE trabajador_id = ?
+          `, [w.id]);
+
+          breakdown = await query(`
+            SELECT r.ot_id, o.detalle as ot_detalle, SUM(r.horas_normales + r.horas_extra) as horas_ot
+            FROM registro_hh r
+            JOIN ordenes_trabajo o ON r.ot_id = o.id
+            WHERE r.trabajador_id = ?
+            GROUP BY r.ot_id, o.detalle
+          `, [w.id]);
+        } else {
+          hoursSummary = await get(`
+            SELECT SUM(horas_normales + horas_extra) as total_horas 
+            FROM registro_hh 
+            WHERE trabajador_id = ? AND SUBSTR(fecha, 1, 7) = ?
+          `, [w.id, targetMonth]);
+
+          breakdown = await query(`
+            SELECT r.ot_id, o.detalle as ot_detalle, SUM(r.horas_normales + r.horas_extra) as horas_ot
+            FROM registro_hh r
+            JOIN ordenes_trabajo o ON r.ot_id = o.id
+            WHERE r.trabajador_id = ? AND SUBSTR(r.fecha, 1, 7) = ?
+            GROUP BY r.ot_id, o.detalle
+          `, [w.id, targetMonth]);
+        }
 
         return {
           id: w.id,
           nombre: w.nombre,
           rol: w.rol,
-          horas_mensuales_esperadas: w.horas_mensuales_esperadas || 180.0,
-          horas_reales: hoursSummary.total_horas || 0,
-          desglose: breakdown || []
+          horas_mensuales_esperadas: w.horas_mensuales_esperadas || 168.0,
+          horas_reales: hoursSummary ? (hoursSummary.total_horas || 0) : 0,
+          desglose: breakdown || [],
+          mes_calculado: targetMonth
         };
       })
     );
     
     res.json(performance);
   } catch (error) {
+    console.error('Error en rendimiento-personal:', error);
     res.status(500).json({ error: error.message });
   }
 });

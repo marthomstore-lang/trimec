@@ -137,6 +137,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTabAdmin, setActiveTabAdmin] = useState('ots'); // 'ots', 'rendimiento', 'inventario', 'activos', 'cotizaciones'
   const [performanceData, setPerformanceData] = useState([]);
+  const [selectedMonthPerf, setSelectedMonthPerf] = useState('');
   const [selectedWorkerForDetail, setSelectedWorkerForDetail] = useState(null);
   const [workerDetailHhList, setWorkerDetailHhList] = useState([]);
   const [loadingWorkerDetail, setLoadingWorkerDetail] = useState(false);
@@ -385,10 +386,15 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     }
   };
 
-  const fetchPerformance = async () => {
+  const fetchPerformance = async (monthOverride) => {
     try {
-      const data = await api('/finanzas/rendimiento-personal');
+      const monthToFetch = monthOverride !== undefined ? monthOverride : selectedMonthPerf;
+      const url = monthToFetch ? `/finanzas/rendimiento-personal?mes=${monthToFetch}` : '/finanzas/rendimiento-personal';
+      const data = await api(url);
       setPerformanceData(data);
+      if (data && data.length > 0 && data[0].mes_calculado && !selectedMonthPerf) {
+        setSelectedMonthPerf(data[0].mes_calculado);
+      }
     } catch (err) {
       showToast('Error al cargar rendimiento de personal', 'danger');
     }
@@ -399,8 +405,11 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     setLoadingWorkerDetail(true);
     try {
       const allHh = await api('/hh');
-      const currentMonth = new Date().toISOString().substring(0, 7); // ej: "2026-07"
-      const filtered = allHh.filter(h => h.trabajador_id === worker.id && h.fecha.startsWith(currentMonth));
+      const filtered = allHh.filter(h => {
+        if (h.trabajador_id !== worker.id) return false;
+        if (!selectedMonthPerf || selectedMonthPerf === 'TODOS') return true;
+        return h.fecha.startsWith(selectedMonthPerf);
+      });
       setWorkerDetailHhList(filtered);
     } catch (err) {
       showToast('Error al cargar detalle de horas del trabajador', 'danger');
@@ -961,10 +970,29 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
           {/* TAB 2: RENDIMIENTO Y EFICIENCIA DE PERSONAL */}
           {activeTabAdmin === 'rendimiento' && (
             <div className="panel-card">
-              <div className="panel-header" style={{ marginBottom: '1.5rem' }}>
+              <div className="panel-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                   <h3>Rendimiento Mensual de Personal (Horas Hombre)</h3>
-                  <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>Meta de horas a cumplir respecto a las horas reales imputadas durante el mes actual.</p>
+                  <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>
+                    Meta de horas a cumplir respecto a las horas reales imputadas durante el período seleccionado ({selectedMonthPerf || 'Cargando...'}).
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Período / Mes:</label>
+                  <select 
+                    className="form-control" 
+                    style={{ width: 'auto', padding: '0.35rem 0.75rem', fontSize: '0.85rem', fontWeight: 600 }} 
+                    value={selectedMonthPerf} 
+                    onChange={(e) => {
+                      setSelectedMonthPerf(e.target.value);
+                      fetchPerformance(e.target.value);
+                    }}
+                  >
+                    <option value="2026-08">2026-08 (Agosto 2026)</option>
+                    <option value="2026-07">2026-07 (Julio 2026)</option>
+                    <option value="2026-06">2026-06 (Junio 2026)</option>
+                    <option value="TODOS">Todos los Períodos</option>
+                  </select>
                 </div>
               </div>
               
