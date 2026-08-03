@@ -838,7 +838,7 @@ app.get('/api/ots/:id/pdf', async (req, res) => {
     const expensesList = await query(`
       SELECT clasificacion, detalle, cantidad, valor_neto, valor_total 
       FROM gastos_diarios 
-      WHERE ot_id = ? AND clasificacion != 'Almuerzo'
+      WHERE ot_id = ?
       ORDER BY fecha ASC
     `, [id]);
 

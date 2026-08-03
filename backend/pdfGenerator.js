@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 
 export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }, res) => {
-  const doc = new PDFDocument({ margin: 30, size: 'LETTER' });
+  const doc = new PDFDocument({ margin: 30, size: 'LETTER', autoFirstPage: true });
 
   // Pipe to response
   doc.pipe(res);
@@ -10,6 +10,17 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   const red = '#CC0000';
   const headerBg = '#EAEAEA';
   const borderGray = '#666666';
+
+  let currentY = 25;
+
+  const checkPageOverflow = (needed = 15) => {
+    if (currentY + needed > 680) {
+      doc.addPage();
+      currentY = 40;
+      return true;
+    }
+    return false;
+  };
 
   // --- TOP HEADER ---
   doc.fillColor(black).fontSize(16).text('PRESUPUESTO', 220, 25, { bold: true });
@@ -29,7 +40,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   doc.fontSize(6).fillColor(black).text('INGENIERIA MECANICA - MANTENIMIENTO INDUSTRIAL', 40, 80);
 
   // --- ANTECEDENTES (2 COLUMNS BOXES) ---
-  let currentY = 100;
+  currentY = 100;
 
   // Box 1: Prestador (Datos fijos institucionales de TRIMEC)
   doc.rect(40, currentY, 260, 95).strokeColor(borderGray).lineWidth(0.8).stroke();
@@ -106,7 +117,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
     if (cat.includes('INSUMO')) {
       totalInsumos += v;
       insumosList.push(e);
-    } else if (cat.includes('TERCERO') || cat.includes('OTROS') || cat.includes('PEAJE') || cat.includes('COMBUSTIBLE')) {
+    } else if (cat.includes('TERCERO') || cat.includes('OTROS') || cat.includes('PEAJE') || cat.includes('COMBUSTIBLE') || cat.includes('ALMUERZO')) {
       totalTerceros += v;
       tercerosList.push(e);
     } else {
@@ -149,12 +160,13 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
     .text('Iva', 340, rY + 57).text('$', 415, rY + 57).text(iva.toLocaleString('es-CL'), 480, rY + 57, { align: 'right', width: 80 })
     .text('Total', 340, rY + 66, { bold: true }).text('$', 415, rY + 66, { bold: true }).text(totalG.toLocaleString('es-CL'), 480, rY + 66, { align: 'right', width: 80, bold: true });
 
+  currentY += boxHeight + 14;
+
   // --- ITEM N°1 - MANO DE OBRA ---
-  currentY += boxHeight + 12;
+  checkPageOverflow(30);
   doc.rect(40, currentY, 530, 12).fill(headerBg);
   doc.fillColor(black).fontSize(8).text('Item N°1 - MANO DE OBRA', 45, currentY + 2, { bold: true });
 
-  // Headers
   currentY += 12;
   doc.rect(40, currentY, 530, 12).strokeColor(borderGray).stroke();
   doc.fontSize(7)
@@ -167,6 +179,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   currentY += 12;
   if (hhList.length > 0) {
     hhList.forEach(hh => {
+      checkPageOverflow(12);
       const totHoras = (hh.horas_normales || 0) + (hh.horas_extra || 0);
       const costo = Math.round(hh.costo_calculado || 0);
       const pUnit = totHoras > 0 ? Math.round(costo / totHoras) : 0;
@@ -180,6 +193,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
       currentY += 11;
     });
   } else {
+    checkPageOverflow(12);
     doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
     doc.fontSize(7)
       .text('Mano de obra general según requerimiento', 45, currentY + 2, { width: 200 })
@@ -190,10 +204,12 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
     currentY += 11;
   }
 
+  checkPageOverflow(14);
   doc.fontSize(7.5).text('Total Mano de Obra ($)', 360, currentY + 2, { bold: true }).text(`$ ${totalHh > 0 ? totalHh.toLocaleString('es-CL') : '-'}`, 460, currentY + 2, { align: 'right', width: 100, bold: true });
 
   // --- ITEM N°2 - REPUESTOS - MATERIALES ---
   currentY += 14;
+  checkPageOverflow(30);
   doc.rect(40, currentY, 530, 10).fill(headerBg);
   doc.fillColor(black).fontSize(7.5).text('Item N°2 - REPUESTOS - MATERIALES', 45, currentY + 1, { bold: true });
   currentY += 10;
@@ -203,6 +219,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
 
   if (materialesList.length > 0) {
     materialesList.forEach(m => {
+      checkPageOverflow(12);
       const cant = m.cantidad || 1;
       const valN = Math.round(m.valor_neto || 0);
       const pUnit = Math.round(valN / cant);
@@ -216,14 +233,17 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
       currentY += 11;
     });
   } else {
+    checkPageOverflow(12);
     doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
     doc.fontSize(7).text('-', 45, currentY + 2).text('0', 250, currentY + 2, { align: 'center', width: 60 }).text('c/u', 315, currentY + 2, { align: 'center', width: 40 }).text('$', 360, currentY + 2, { align: 'center', width: 90 }).text('-', 460, currentY + 2, { align: 'right', width: 100 });
     currentY += 11;
   }
+  checkPageOverflow(14);
   doc.fontSize(7.5).text('Total Repuestos - Materiales', 360, currentY + 2, { bold: true }).text(`$ ${totalMateriales > 0 ? totalMateriales.toLocaleString('es-CL') : '-'}`, 460, currentY + 2, { align: 'right', width: 100, bold: true });
 
   // --- ITEM N°3 - INSUMOS ---
   currentY += 14;
+  checkPageOverflow(30);
   doc.rect(40, currentY, 530, 10).fill(headerBg);
   doc.fillColor(black).fontSize(7.5).text('Item N°3 - INSUMOS', 45, currentY + 1, { bold: true });
   currentY += 10;
@@ -233,6 +253,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
 
   if (insumosList.length > 0) {
     insumosList.forEach(ins => {
+      checkPageOverflow(12);
       const cant = ins.cantidad || 1;
       const valN = Math.round(ins.valor_neto || 0);
       const pUnit = Math.round(valN / cant);
@@ -246,14 +267,17 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
       currentY += 11;
     });
   } else {
+    checkPageOverflow(12);
     doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
     doc.fontSize(7).text('-', 45, currentY + 2).text('0', 250, currentY + 2, { align: 'center', width: 60 }).text('c/u', 315, currentY + 2, { align: 'center', width: 40 }).text('$', 360, currentY + 2, { align: 'center', width: 90 }).text('-', 460, currentY + 2, { align: 'right', width: 100 });
     currentY += 11;
   }
+  checkPageOverflow(14);
   doc.fontSize(7.5).text('Total Insumos', 360, currentY + 2, { bold: true }).text(`$ ${totalInsumos > 0 ? totalInsumos.toLocaleString('es-CL') : '-'}`, 460, currentY + 2, { align: 'right', width: 100, bold: true });
 
   // --- ITEM N°4 - SERVICIOS DE TERCEROS ---
   currentY += 14;
+  checkPageOverflow(30);
   doc.rect(40, currentY, 530, 10).fill(headerBg);
   doc.fillColor(black).fontSize(7.5).text('Item N°4 - SERVICIOS DE TERCEROS', 45, currentY + 1, { bold: true });
   currentY += 10;
@@ -263,6 +287,7 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
 
   if (tercerosList.length > 0) {
     tercerosList.forEach(t => {
+      checkPageOverflow(12);
       const cant = t.cantidad || 1;
       const valN = Math.round(t.valor_neto || 0);
       const pUnit = Math.round(valN / cant);
@@ -276,18 +301,17 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
       currentY += 11;
     });
   } else {
+    checkPageOverflow(12);
     doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
     doc.fontSize(7).text('-', 45, currentY + 2).text('0', 250, currentY + 2, { align: 'center', width: 60 }).text('c/u', 315, currentY + 2, { align: 'center', width: 40 }).text('$', 360, currentY + 2, { align: 'center', width: 90 }).text('-', 460, currentY + 2, { align: 'right', width: 100 });
     currentY += 11;
   }
+  checkPageOverflow(14);
   doc.fontSize(7.5).text('Total Servicios de Terceros', 360, currentY + 2, { bold: true }).text(`$ ${totalTerceros > 0 ? totalTerceros.toLocaleString('es-CL') : '-'}`, 460, currentY + 2, { align: 'right', width: 100, bold: true });
 
   // --- BOTTOM: NOTAS & FIRMA ---
   currentY += 18;
-  if (currentY > 640) {
-    doc.addPage();
-    currentY = 40;
-  }
+  checkPageOverflow(80);
 
   doc.fillColor(black).fontSize(8).text('NOTAS:', 40, currentY, { bold: true });
 
@@ -310,12 +334,20 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
   customNotesLines.forEach(line => {
     if (!line.trim()) return;
     const lineH = doc.heightOfString(line, { width: 350 });
+    if (nY + lineH > 700) {
+      doc.addPage();
+      nY = 40;
+    }
     doc.text(line, 40, nY, { width: 350 });
     nY += lineH + 2;
   });
 
   // FIRMA Y TIMBRE (Right side)
-  const sigY = currentY + 15;
+  let sigY = nY > currentY + 15 ? nY : currentY + 15;
+  if (sigY + 60 > 720) {
+    doc.addPage();
+    sigY = 40;
+  }
   doc.strokeColor('blue').lineWidth(1.5);
   doc.moveTo(430, sigY + 20).quadraticCurveTo(460, sigY - 10, 480, sigY + 25).stroke();
   doc.moveTo(450, sigY + 10).quadraticCurveTo(470, sigY + 30, 500, sigY + 5).stroke();
