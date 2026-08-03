@@ -13,6 +13,68 @@ const ALL_STAGES_LIST = [
   { id: '5', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada', 'Cerradas'] }
 ];
 
+const getOtSemaforo = (ot) => {
+  if (!ot) return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ N/A', code: 'INDET' };
+  const isSp = ot.estado === 'SP';
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  if (isSp) {
+    if (ot.fecha_envio_presupuesto) {
+      return {
+        color: '#a855f7',
+        bgColor: 'rgba(168, 85, 247, 0.18)',
+        border: '#a855f7',
+        text: '🟣 Presupuesto Enviado',
+        code: 'ENVIADO'
+      };
+    }
+
+    let deadline = null;
+    if (ot.fecha_proyectada_presupuesto) {
+      deadline = new Date(ot.fecha_proyectada_presupuesto + 'T00:00:00');
+    } else if (ot.fecha_solicitud) {
+      deadline = new Date(ot.fecha_solicitud + 'T00:00:00');
+      deadline.setDate(deadline.getDate() + 3);
+    }
+
+    if (!deadline || isNaN(deadline.getTime())) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Límite', code: 'INDET' };
+    }
+
+    const diffTime = deadline.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Vencido (${Math.abs(diffDays)}d atraso)`, code: 'ROJO' };
+    }
+    if (diffDays <= 1) {
+      return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Vence ${diffDays === 0 ? 'Hoy' : 'Mañana'}`, code: 'AMARILLO' };
+    }
+    return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 En Plazo (${diffDays}d restantes)`, code: 'VERDE' };
+  } else {
+    if (!ot.fecha_entrega) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Entrega', code: 'INDET' };
+    }
+
+    const deadline = new Date(ot.fecha_entrega + 'T00:00:00');
+    if (isNaN(deadline.getTime())) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Fecha Inválida', code: 'INDET' };
+    }
+
+    const diffTime = deadline.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Retrasado (${Math.abs(diffDays)}d)`, code: 'ROJO' };
+    }
+    if (diffDays <= 1) {
+      return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Entrega ${diffDays === 0 ? 'Hoy' : 'Mañana'}`, code: 'AMARILLO' };
+    }
+    return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 En Plazo (${diffDays}d restantes)`, code: 'VERDE' };
+  }
+};
+
 const DashboardSupervisor = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
   const [selectedStageFilter, setSelectedStageFilter] = useState(null);

@@ -479,14 +479,15 @@ app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async 
     const updatedMontoNeto = body.monto_neto_presupuesto !== undefined ? body.monto_neto_presupuesto : otExisting.monto_neto_presupuesto;
     const updatedHhPresup = body.hh_presupuestadas !== undefined ? body.hh_presupuestadas : otExisting.hh_presupuestadas;
     const updatedFechaProj = body.fecha_proyectada_presupuesto !== undefined ? body.fecha_proyectada_presupuesto : otExisting.fecha_proyectada_presupuesto;
+    const updatedFechaEnvio = body.fecha_envio_presupuesto !== undefined ? body.fecha_envio_presupuesto : otExisting.fecha_envio_presupuesto;
     const updatedNotas = body.notas_presupuesto !== undefined ? body.notas_presupuesto : otExisting.notas_presupuesto;
     const updatedFaena = body.faena !== undefined ? body.faena : otExisting.faena;
 
     await run(
       `UPDATE ordenes_trabajo 
-       SET id = ?, cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?, notas_presupuesto = ?, faena = ?
+       SET id = ?, cliente_id = ?, detalle = ?, estado = ?, es_emergencia = ?, recargo_emergencia = ?, fecha_solicitud = ?, fecha_aprobacion = ?, fecha_entrega = ?, monto_neto_presupuesto = ?, hh_presupuestadas = ?, fecha_proyectada_presupuesto = ?, fecha_envio_presupuesto = ?, notas_presupuesto = ?, faena = ?
        WHERE id = ?`,
-      [targetId, updatedClienteId, updatedDetalle, updatedEstado, updatedEsEmergencia, updatedRecargo, updatedFechaSolicitud, updatedFechaAprobacion, updatedFechaEntrega, updatedMontoNeto, updatedHhPresup, updatedFechaProj, updatedNotas, updatedFaena, id]
+      [targetId, updatedClienteId, updatedDetalle, updatedEstado, updatedEsEmergencia, updatedRecargo, updatedFechaSolicitud, updatedFechaAprobacion, updatedFechaEntrega, updatedMontoNeto, updatedHhPresup, updatedFechaProj, updatedFechaEnvio, updatedNotas, updatedFaena, id]
     );
 
     res.json({ message: 'OT actualizada con éxito', nuevo_id: targetId });
@@ -971,41 +972,63 @@ app.get('/api/inventario', authenticate, async (req, res) => {
 });
 
 app.post('/api/inventario', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida } = req.body;
+  const { sku, old_sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, stock_minimo, familia, unidad_medida } = req.body;
   if (!sku || !descripcion) {
     return res.status(400).json({ message: 'SKU y descripción son obligatorios' });
   }
   try {
     const cleanSku = String(sku).trim();
-    const existing = await get('SELECT sku FROM inventario WHERE sku = ?', [cleanSku]);
-    
+    const cleanOldSku = old_sku ? String(old_sku).trim() : null;
+
     const stockVal = stock !== undefined && stock !== null && stock !== '' ? parseFloat(stock) : 0.0;
     const valorVal = valor_unitario !== undefined && valor_unitario !== null && valor_unitario !== '' ? parseFloat(valor_unitario) : 0.0;
+    const minVal = stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseFloat(stock_minimo) : 10.0;
 
     const safeStock = isNaN(stockVal) ? 0.0 : stockVal;
     const safeValor = isNaN(valorVal) ? 0.0 : valorVal;
+    const safeMin = isNaN(minVal) ? 10.0 : minVal;
     const safeProv = proveedor || null;
     const safeFecha = fecha_ultimo_pedido || null;
     const safeUbic = ubicacion || null;
     const safeFam = familia || null;
     const safeUni = unidad_medida || null;
 
+    // Si cambió el SKU al editar
+    if (cleanOldSku && cleanOldSku !== cleanSku) {
+      await run('UPDATE inventario_movimientos SET sku = ? WHERE sku = ?', [cleanSku, cleanOldSku]);
+      await run('DELETE FROM inventario WHERE sku = ?', [cleanOldSku]);
+    }
+
+    const existing = await get('SELECT sku FROM inventario WHERE sku = ?', [cleanSku]);
+
     if (existing) {
       await run(`
         UPDATE inventario 
-        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?, familia = ?, unidad_medida = ?
+        SET descripcion = ?, proveedor = ?, fecha_ultimo_pedido = ?, stock = ?, ubicacion = ?, valor_unitario = ?, stock_minimo = ?, familia = ?, unidad_medida = ?
         WHERE sku = ?
-      `, [descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeFam, safeUni, cleanSku]);
+      `, [descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeMin, safeFam, safeUni, cleanSku]);
     } else {
       await run(`
-        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, familia, unidad_medida)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [cleanSku, descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeFam, safeUni]);
+        INSERT INTO inventario (sku, descripcion, proveedor, fecha_ultimo_pedido, stock, ubicacion, valor_unitario, stock_minimo, familia, unidad_medida)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [cleanSku, descripcion, safeProv, safeFecha, safeStock, safeUbic, safeValor, safeMin, safeFam, safeUni]);
     }
-    res.json({ sku: cleanSku, descripcion, proveedor: safeProv, fecha_ultimo_pedido: safeFecha, stock: safeStock, ubicacion: safeUbic, valor_unitario: safeValor, familia: safeFam, unidad_medida: safeUni });
+    res.json({ sku: cleanSku, descripcion, proveedor: safeProv, fecha_ultimo_pedido: safeFecha, stock: safeStock, ubicacion: safeUbic, valor_unitario: safeValor, stock_minimo: safeMin, familia: safeFam, unidad_medida: safeUni });
   } catch (error) {
     console.error('Error al guardar inventario:', error);
     res.status(500).json({ error: error.message, message: error.message });
+  }
+});
+
+app.delete('/api/inventario/:sku', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { sku } = req.params;
+  try {
+    const cleanSku = String(sku).trim();
+    await run('DELETE FROM inventario_movimientos WHERE sku = ?', [cleanSku]);
+    await run('DELETE FROM inventario WHERE sku = ?', [cleanSku]);
+    res.json({ message: 'Artículo eliminado de Bodega correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

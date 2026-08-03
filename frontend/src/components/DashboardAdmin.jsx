@@ -9,6 +9,68 @@ const WORKFLOW_STAGES = [
   { id: '5', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada', 'Cerradas'] }
 ];
 
+export const getOtSemaforo = (ot) => {
+  if (!ot) return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ N/A', code: 'INDET' };
+  const isSp = ot.estado === 'SP';
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  if (isSp) {
+    if (ot.fecha_envio_presupuesto) {
+      return {
+        color: '#a855f7',
+        bgColor: 'rgba(168, 85, 247, 0.18)',
+        border: '#a855f7',
+        text: '🟣 Presupuesto Enviado',
+        code: 'ENVIADO'
+      };
+    }
+
+    let deadline = null;
+    if (ot.fecha_proyectada_presupuesto) {
+      deadline = new Date(ot.fecha_proyectada_presupuesto + 'T00:00:00');
+    } else if (ot.fecha_solicitud) {
+      deadline = new Date(ot.fecha_solicitud + 'T00:00:00');
+      deadline.setDate(deadline.getDate() + 3);
+    }
+
+    if (!deadline || isNaN(deadline.getTime())) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Límite', code: 'INDET' };
+    }
+
+    const diffTime = deadline.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Vencido (${Math.abs(diffDays)}d atraso)`, code: 'ROJO' };
+    }
+    if (diffDays <= 1) {
+      return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Vence ${diffDays === 0 ? 'Hoy' : 'Mañana'}`, code: 'AMARILLO' };
+    }
+    return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 En Plazo (${diffDays}d restantes)`, code: 'VERDE' };
+  } else {
+    if (!ot.fecha_entrega) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Entrega', code: 'INDET' };
+    }
+
+    const deadline = new Date(ot.fecha_entrega + 'T00:00:00');
+    if (isNaN(deadline.getTime())) {
+      return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Fecha Inválida', code: 'INDET' };
+    }
+
+    const diffTime = deadline.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Retrasado (${Math.abs(diffDays)}d)`, code: 'ROJO' };
+    }
+    if (diffDays <= 1) {
+      return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Entrega ${diffDays === 0 ? 'Hoy' : 'Mañana'}`, code: 'AMARILLO' };
+    }
+    return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 En Plazo (${diffDays}d restantes)`, code: 'VERDE' };
+  }
+};
+
 const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [ots, setOts] = useState([]);
   const [filtroEstadoOt, setFiltroEstadoOt] = useState('Todas');
@@ -156,6 +218,24 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     } catch (err) {
       showToast(err.message || 'Error al guardar consumible', 'danger');
     }
+  };
+
+  const handleDeleteItem = (sku) => {
+    setConfirmModal({
+      show: true,
+      message: `¿Estás seguro de que deseas eliminar el artículo SKU "${sku}" de la Bodega?`,
+      onConfirm: async () => {
+        try {
+          await api(`/inventario/${sku}`, { method: 'DELETE' });
+          showToast('Artículo eliminado de la Bodega', 'info');
+          setShowItemModal(false);
+          fetchInventario();
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar artículo', 'danger');
+        }
+        setConfirmModal({ show: false, message: '', onConfirm: null });
+      }
+    });
   };
 
   const handleSaveMovimiento = async (e) => {
@@ -752,6 +832,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                     <th>Cliente</th>
                     <th>Detalle</th>
                     <th>Estado</th>
+                    <th>Plazo / Semáforo</th>
                     <th>Neto Presupuestado</th>
                     <th>Costo Real</th>
                     <th>Margen</th>
@@ -759,27 +840,34 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOts.map((ot) => (
-                    <tr key={ot.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{ot.id}</td>
-                      <td style={{ fontWeight: 500 }}>{ot.cliente_nombre}</td>
-                      <td style={{ maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {ot.es_emergencia === 1 && <span style={{ color: '#ef4444', fontWeight: 'bold', marginRight: '4px' }}>[URGENTE]</span>}
-                        {ot.detalle}
-                      </td>
-                      <td>
-                        <span className={`badge badge-${ot.estado.toLowerCase().replace(' ', '')}`}>
-                          {ot.estado}
-                        </span>
-                      </td>
-                      <td className="text-right notranslate">${Math.round(ot.monto_neto_presupuesto).toLocaleString('es-CL')}</td>
-                      <td className="text-right notranslate">${Math.round(ot.costo_total).toLocaleString('es-CL')}</td>
-                      <td className="text-right notranslate">
-                        <span className={`margin-pill ${ot.margen_monto >= 0 ? 'margin-positive' : 'margin-negative'}`}>
-                          {ot.margen_porcentaje.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td>
+                  {filteredOts.map((ot) => {
+                    const sem = getOtSemaforo(ot);
+                    return (
+                      <tr key={ot.id}>
+                        <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{ot.id}</td>
+                        <td style={{ fontWeight: 500 }}>{ot.cliente_nombre}</td>
+                        <td style={{ maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {ot.es_emergencia === 1 && <span style={{ color: '#ef4444', fontWeight: 'bold', marginRight: '4px' }}>[URGENTE]</span>}
+                          {ot.detalle}
+                        </td>
+                        <td>
+                          <span className={`badge badge-${ot.estado.toLowerCase().replace(' ', '')}`}>
+                            {ot.estado}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge" style={{ background: sem.bgColor, color: sem.color, border: `1px solid ${sem.border}`, fontWeight: 600, fontSize: '0.75rem' }}>
+                            {sem.text}
+                          </span>
+                        </td>
+                        <td className="text-right notranslate">${Math.round(ot.monto_neto_presupuesto).toLocaleString('es-CL')}</td>
+                        <td className="text-right notranslate">${Math.round(ot.costo_total).toLocaleString('es-CL')}</td>
+                        <td className="text-right notranslate">
+                          <span className={`margin-pill ${ot.margen_monto >= 0 ? 'margin-positive' : 'margin-negative'}`}>
+                            {ot.margen_porcentaje.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td>
                         <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
                           <button 
                             className="btn btn-secondary btn-sm" 
@@ -811,10 +899,11 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                   {ots.length === 0 && (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                         No hay Órdenes de Trabajo registradas. ¡Abre una nueva para comenzar!
                       </td>
                     </tr>
@@ -948,11 +1037,16 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                   <div className="tab-header">
                     <h3>Bodega</h3>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      Existencias y costos unitarios registrados
+                      Existencias y alertas de stock mínimo
                     </span>
+                    {inventario.some(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)) && (
+                      <span className="badge badge-warning" style={{ marginLeft: '0.75rem', fontSize: '0.75rem' }}>
+                        🚨 {inventario.filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).length} en Stock Crítico
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', descripcion: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0, isEditing: false }); setShowItemModal(true); }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', old_sku: '', descripcion: '', proveedor: '', stock: 0, stock_minimo: 10, ubicacion: '', valor_unitario: 0, isEditing: false }); setShowItemModal(true); }}>
                       + Nuevo Artículo
                     </button>
                     <button className="btn btn-primary btn-sm" onClick={() => { setNewMov({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' }); setShowMovModal(true); }}>
@@ -969,33 +1063,64 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                         <th>Descripción</th>
                         <th>Proveedor</th>
                         <th>Ubicación</th>
-                        <th>Stock</th>
+                        <th>Stock Actual</th>
+                        <th>Stock Mínimo</th>
                         <th>Costo Unitario</th>
                         <th>Valor Total Stock</th>
                         <th>Acción</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {inventario.map(item => (
-                        <tr key={item.sku}>
-                          <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{item.sku}</td>
-                          <td>{item.descripcion}</td>
-                          <td>{item.proveedor || '-'}</td>
-                          <td>{item.ubicacion || '-'}</td>
-                          <td>
-                            <span className={`badge ${item.stock <= 2 ? 'badge-emergencia' : 'badge-aprobada'}`}>
-                              {item.stock} unidades
-                            </span>
-                          </td>
-                          <td className="text-right notranslate">${Math.round(item.valor_unitario).toLocaleString('es-CL')}</td>
-                          <td className="text-right notranslate" style={{ fontWeight: 600 }}>${Math.round(item.stock * item.valor_unitario).toLocaleString('es-CL')}</td>
-                          <td>
-                            <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => { setNewItem({ ...item, isEditing: true }); setShowItemModal(true); }}>
-                              ✏️
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {inventario.map(item => {
+                        const stockVal = Number(item.stock || 0);
+                        const minVal = Number(item.stock_minimo !== undefined ? item.stock_minimo : 10);
+                        let badgeBg = '#10b981';
+                        let badgeText = `🟢 ${stockVal} unidades`;
+                        if (stockVal === 0) {
+                          badgeBg = '#ef4444';
+                          badgeText = `🔴 0 (Agotado)`;
+                        } else if (stockVal <= minVal) {
+                          badgeBg = '#f59e0b';
+                          badgeText = `🟡 ${stockVal} (Crítico ≤ ${minVal})`;
+                        }
+
+                        return (
+                          <tr key={item.sku}>
+                            <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{item.sku}</td>
+                            <td>{item.descripcion}</td>
+                            <td>{item.proveedor || '-'}</td>
+                            <td>{item.ubicacion || '-'}</td>
+                            <td>
+                              <span className="badge" style={{ background: badgeBg, color: '#fff', fontWeight: 600 }}>
+                                {badgeText}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{minVal} u.</td>
+                            <td className="text-right notranslate">${Math.round(item.valor_unitario).toLocaleString('es-CL')}</td>
+                            <td className="text-right notranslate" style={{ fontWeight: 600 }}>${Math.round(item.stock * item.valor_unitario).toLocaleString('es-CL')}</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                <button 
+                                  className="btn btn-secondary btn-sm" 
+                                  style={{ padding: '0.2rem 0.4rem' }} 
+                                  title="Editar SKU / Stock Mínimo"
+                                  onClick={() => { setNewItem({ ...item, old_sku: item.sku, stock_minimo: minVal, isEditing: true }); setShowItemModal(true); }}
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  className="btn btn-secondary btn-sm" 
+                                  style={{ padding: '0.2rem 0.4rem', color: '#ef4444', borderColor: '#ef4444' }} 
+                                  title="Eliminar Consumible"
+                                  onClick={() => handleDeleteItem(item.sku)}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {inventario.length === 0 && (
                         <tr>
                           <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
@@ -1543,7 +1668,14 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
             <form onSubmit={handleSaveItem}>
               <div className="form-group">
                 <label>SKU (Código único)</label>
-                <input type="text" className="form-control" placeholder="Ej: AN002" value={newItem.sku} onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} disabled={Boolean(newItem.isEditing || (newItem.sku && inventario.some(i => i.sku === newItem.sku)))} required />
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Ej: AN002" 
+                  value={newItem.sku} 
+                  onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} 
+                  required 
+                />
               </div>
               <div className="form-group mt-3">
                 <label>Descripción / Nombre</label>
@@ -1557,17 +1689,35 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                 <label>Ubicación física</label>
                 <input type="text" className="form-control" placeholder="Ej: Bodega Taller" value={newItem.ubicacion} onChange={(e) => setNewItem({ ...newItem, ubicacion: e.target.value })} />
               </div>
-              <div className="form-group mt-3">
-                <label>Stock Inicial</label>
-                <input type="number" className="form-control" value={newItem.stock} onChange={(e) => setNewItem({ ...newItem, stock: parseFloat(e.target.value) || 0 })} min="0" required />
+              <div style={{ display: 'flex', gap: '0.75rem' }} className="mt-3">
+                <div className="form-group flex-grow">
+                  <label>Stock Actual</label>
+                  <input type="number" className="form-control" value={newItem.stock} onChange={(e) => setNewItem({ ...newItem, stock: parseFloat(e.target.value) || 0 })} min="0" required />
+                </div>
+                <div className="form-group flex-grow">
+                  <label>Stock Mínimo (Alerta)</label>
+                  <input type="number" className="form-control" value={newItem.stock_minimo !== undefined ? newItem.stock_minimo : 10} onChange={(e) => setNewItem({ ...newItem, stock_minimo: parseFloat(e.target.value) || 0 })} min="0" required />
+                </div>
               </div>
               <div className="form-group mt-3">
                 <label>Costo / Valor Unitario ($)</label>
                 <input type="number" className="form-control" value={newItem.valor_unitario} onChange={(e) => setNewItem({ ...newItem, valor_unitario: parseFloat(e.target.value) || 0 })} min="0" required />
               </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }}>
-                Guardar Consumible
-              </button>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  Guardar Consumible
+                </button>
+                {newItem.isEditing && (
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    style={{ color: '#ef4444', borderColor: '#ef4444' }} 
+                    onClick={() => handleDeleteItem(newItem.old_sku || newItem.sku)}
+                  >
+                    🗑️ Eliminar
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         </div>

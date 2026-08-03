@@ -610,6 +610,83 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
 
   const currentStageIndex = STAGES_LIST.findIndex(s => s.statuses.includes(ot.estado));
 
+  const getOtSemaforoDetail = (ot) => {
+    if (!ot) return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ N/A' };
+    const isSp = ot.estado === 'SP';
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (isSp) {
+      if (ot.fecha_envio_presupuesto) {
+        return {
+          color: '#a855f7',
+          bgColor: 'rgba(168, 85, 247, 0.18)',
+          border: '#a855f7',
+          text: `🟣 Presupuesto Enviado (${ot.fecha_envio_presupuesto})`
+        };
+      }
+
+      let deadline = null;
+      if (ot.fecha_proyectada_presupuesto) {
+        deadline = new Date(ot.fecha_proyectada_presupuesto + 'T00:00:00');
+      } else if (ot.fecha_solicitud) {
+        deadline = new Date(ot.fecha_solicitud + 'T00:00:00');
+        deadline.setDate(deadline.getDate() + 3);
+      }
+
+      if (!deadline || isNaN(deadline.getTime())) {
+        return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Límite Presupuesto' };
+      }
+
+      const diffTime = deadline.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Presupuesto Vencido (${Math.abs(diffDays)}d retraso)` };
+      }
+      if (diffDays <= 1) {
+        return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Presupuesto Vence ${diffDays === 0 ? 'Hoy' : 'Mañana'}` };
+      }
+      return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 Presupuesto en Plazo (${diffDays}d restantes)` };
+    } else {
+      if (!ot.fecha_entrega) {
+        return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Sin Fecha Entrega Trabajos' };
+      }
+
+      const deadline = new Date(ot.fecha_entrega + 'T00:00:00');
+      if (isNaN(deadline.getTime())) {
+        return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ Fecha Entrega Inválida' };
+      }
+
+      const diffTime = deadline.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        return { color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.18)', border: '#ef4444', text: `🔴 Entrega Atrasada (${Math.abs(diffDays)}d retraso)` };
+      }
+      if (diffDays <= 1) {
+        return { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.18)', border: '#f59e0b', text: `🟡 Entrega Trabajo ${diffDays === 0 ? 'Hoy' : 'Mañana'}` };
+      }
+      return { color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.18)', border: '#10b981', text: `🟢 Trabajo en Plazo (${diffDays}d restantes)` };
+    }
+  };
+
+  const handleMarcarEnviado = async () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    try {
+      await api(`/ots/${otId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ fecha_envio_presupuesto: todayStr })
+      });
+      showToast('Presupuesto marcado como Enviado al Cliente (Estado Morado 🟣)', 'success');
+      fetchOtDetail();
+    } catch (err) {
+      showToast(err.message || 'Error al marcar presupuesto enviado', 'danger');
+    }
+  };
+
+  const semDetail = getOtSemaforoDetail(ot);
+
   return (
     <div className="dashboard-container">
       <div className="dashboard-title-bar" style={{ marginBottom: '1.5rem' }}>
@@ -617,12 +694,20 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
           <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ marginBottom: '1rem' }}>
             ← Volver al Listado
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <h2 style={{ display: 'inline' }}>OT {ot.id} - {ot.cliente_nombre}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <h2 style={{ display: 'inline', margin: 0 }}>OT {ot.id} - {ot.cliente_nombre}</h2>
             {ot.es_emergencia === 1 && <span className="badge badge-sp">EMERGENCIA</span>}
+            <span className="badge" style={{ background: semDetail.bgColor, color: semDetail.color, border: `1px solid ${semDetail.border}`, fontWeight: 700, fontSize: '0.85rem' }}>
+              {semDetail.text}
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {ot.estado === 'SP' && !ot.fecha_envio_presupuesto && ['admin', 'supervisor'].includes(userRole) && (
+            <button className="btn btn-secondary" style={{ background: '#a855f7', color: '#fff', border: 'none' }} onClick={handleMarcarEnviado}>
+              🟣 Marcar Presupuesto Enviado
+            </button>
+          )}
           {['admin', 'supervisor'].includes(userRole) && (
             <button className="btn btn-secondary" onClick={() => setShowNotesModal(true)}>
               📝 Configurar Notas / Faena
@@ -757,8 +842,12 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 <input type="date" className="form-control" value={editForm.fecha_entrega || ''} onChange={(e) => setEditForm({ ...editForm, fecha_entrega: e.target.value })} />
               </div>
               <div className="form-group flex-grow">
-                <label>Fecha Proyectada Presupuesto</label>
+                <label>Fecha Límite Presupuesto (3 días SP)</label>
                 <input type="date" className="form-control" value={editForm.fecha_proyectada_presupuesto || ''} onChange={(e) => setEditForm({ ...editForm, fecha_proyectada_presupuesto: e.target.value })} />
+              </div>
+              <div className="form-group flex-grow">
+                <label>Fecha Envió Presupuesto (Morado 🟣)</label>
+                <input type="date" className="form-control" value={editForm.fecha_envio_presupuesto || ''} onChange={(e) => setEditForm({ ...editForm, fecha_envio_presupuesto: e.target.value })} />
               </div>
             </div>
 

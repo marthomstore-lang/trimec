@@ -557,6 +557,14 @@ export const initDb = async () => {
       `, [c.rut, c.razon_social, c.prefijo, c.contacto_nombre, c.contacto_email, c.contacto_telefono]);
     }
   }
+
+  try {
+    await run('ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS fecha_envio_presupuesto TEXT');
+  } catch (e) {}
+
+  try {
+    await run('ALTER TABLE inventario ADD COLUMN IF NOT EXISTS stock_minimo REAL DEFAULT 10.0');
+  } catch (e) {}
 };
 
 const db = isPostgres ? pgPool : dbSqlite;
