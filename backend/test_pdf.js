@@ -3,7 +3,8 @@ import { generateBudgetPDF } from '../api/pdfGenerator.js';
 import fs from 'fs';
 
 const { Client } = pkg;
-const targetUrl = 'postgresql://postgres:TrimecSecureDBPassword2026!@db.mhcikqbggxqasspuzbto.supabase.co:5432/postgres';
+import 'dotenv/config';
+const targetUrl = process.env.DATABASE_URL || 'postgresql://postgres.mhcikqbggxqasspuzbto:TrimecSecureDBPassword2026!@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
 
 const client = new Client({
   connectionString: targetUrl,

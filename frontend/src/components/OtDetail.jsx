@@ -237,14 +237,15 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   // Informe Técnico States
   const [informe, setInforme] = useState(null);
   const [isEditingInforme, setIsEditingInforme] = useState(false);
-  const [informeForm, setInformeForm] = useState({ antes_condicion: '', despues_tareas: '', recomendaciones: '', fotos_antes: '[]', fotos_despues: '[]' });
+  const [informeForm, setInformeForm] = useState({ antes_condicion: '', despues_tareas: '', recomendaciones: '', fotos_antes: '[]', fotos_despues: '[]', hora_inicio_ejecucion: '', hora_fin_ejecucion: '', tecnico_id: '' });
   const [showInformePreview, setShowInformePreview] = useState(false);
+  const [travelList, setTravelList] = useState([]);
 
   const fetchOtDetail = async () => {
     setLoading(true);
     setError('');
     try {
-      const [otData, hhData, expensesData, clientsData, filesData, workersData, inventarioData, informeData] = await Promise.all([
+      const [otData, hhData, expensesData, clientsData, filesData, workersData, inventarioData, informeData, travelsData] = await Promise.all([
         api(`/ots/${otId}`),
         api(`/hh/ot/${otId}`),
         api(`/gastos/ot/${otId}`),
@@ -252,9 +253,11 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
         api(`/ots/${otId}/archivos`),
         api('/trabajadores'),
         api('/inventario').catch(() => []),
-        api(`/informes/ot/${otId}`).catch(() => null)
+        api(`/informes/ot/${otId}`).catch(() => null),
+        api(`/traslados/ot/${otId}`).catch(() => [])
       ]);
       setOt(otData);
+      setTravelList(travelsData);
       setHhList(hhData);
       setExpenses(expensesData);
       setClients(clientsData);
@@ -268,9 +271,14 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
       setInventario(inventarioData);
       setInforme(informeData);
       if (informeData) {
-        setInformeForm(informeData);
+        setInformeForm({
+          ...informeData,
+          hora_inicio_ejecucion: informeData.hora_inicio_ejecucion || '',
+          hora_fin_ejecucion: informeData.hora_fin_ejecucion || '',
+          tecnico_id: informeData.tecnico_id || ''
+        });
       } else {
-        setInformeForm({ antes_condicion: '', despues_tareas: '', recomendaciones: '', fotos_antes: '[]', fotos_despues: '[]' });
+        setInformeForm({ antes_condicion: '', despues_tareas: '', recomendaciones: '', fotos_antes: '[]', fotos_despues: '[]', hora_inicio_ejecucion: '', hora_fin_ejecucion: '', tecnico_id: '' });
       }
     } catch (err) {
       setError(err.message || 'Error al cargar los detalles de la OT');
@@ -582,6 +590,11 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     window.open(`${BASE_URL}/ots/${otId}/pdf?token=${token || ''}`, '_blank');
   };
 
+  const handleDownloadInformePdf = () => {
+    const token = localStorage.getItem('trimec_token');
+    window.open(`${BASE_URL}/ots/${otId}/informe-pdf?token=${token || ''}`, '_blank');
+  };
+
   if (loading) return <p style={{ textAlign: 'center', padding: '3rem' }}>Cargando detalles de la OT {otId}...</p>;
   if (error) return <div style={{ padding: '2rem', textAlign: 'center' }}><p className="text-danger">{error}</p><button className="btn btn-secondary mt-4" onClick={onBack}>Volver</button></div>;
   if (!ot) return <p style={{ textAlign: 'center' }}>No se encontró la OT</p>;
@@ -716,6 +729,11 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
           {userRole === 'admin' && (
             <button className="btn btn-secondary" onClick={() => setIsEditing(!isEditing)}>
               {isEditing ? 'Cancelar Edición' : '⚙️ Editar OT'}
+            </button>
+          )}
+          {['admin', 'supervisor'].includes(userRole) && (
+            <button className="btn btn-primary" style={{ backgroundColor: '#10b981', borderColor: '#10b981' }} onClick={handleDownloadInformePdf}>
+              📄 Descargar Informe Técnico PDF
             </button>
           )}
           <button className="btn btn-primary" onClick={handleDownloadPdf}>
@@ -1089,6 +1107,39 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
 
               {isEditingInforme ? (
                 <form onSubmit={handleSaveInformeSubmit}>
+                  <div className="row mb-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div className="form-group">
+                      <label>Hora Inicio Ejecución</label>
+                      <input 
+                        type="time" 
+                        className="form-control" 
+                        value={informeForm.hora_inicio_ejecucion} 
+                        onChange={(e) => setInformeForm({ ...informeForm, hora_inicio_ejecucion: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Hora Fin Ejecución</label>
+                      <input 
+                        type="time" 
+                        className="form-control" 
+                        value={informeForm.hora_fin_ejecucion} 
+                        onChange={(e) => setInformeForm({ ...informeForm, hora_fin_ejecucion: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Técnico Ejecutor</label>
+                      <select 
+                        className="form-select" 
+                        value={informeForm.tecnico_id} 
+                        onChange={(e) => setInformeForm({ ...informeForm, tecnico_id: e.target.value })}
+                      >
+                        <option value="">-- Seleccionar Técnico --</option>
+                        {workers.map(w => (
+                          <option key={w.id} value={w.id}>{w.nombre} ({w.rol})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="form-group" style={{ marginBottom: '1rem' }}>
                     <label>Condición Inicial (Antes)</label>
                     <textarea 
@@ -1128,6 +1179,30 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 </form>
               ) : informe ? (
                 <div>
+                  {(informe.hora_inicio_ejecucion || informe.hora_fin_ejecucion || informe.tecnico_id) && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
+                      {informe.tecnico_id && (
+                        <div>
+                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Técnico Ejecutor:</strong>
+                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>
+                            {workers.find(w => w.id === parseInt(informe.tecnico_id))?.nombre || `Técnico #${informe.tecnico_id}`}
+                          </p>
+                        </div>
+                      )}
+                      {informe.hora_inicio_ejecucion && (
+                        <div>
+                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Inicio Ejecución:</strong>
+                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>{informe.hora_inicio_ejecucion} hrs</p>
+                        </div>
+                      )}
+                      {informe.hora_fin_ejecucion && (
+                        <div>
+                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Término Ejecución:</strong>
+                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>{informe.hora_fin_ejecucion} hrs</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ marginBottom: '1rem' }}>
                     <strong style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Condición Inicial:</strong>
                     <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>{informe.antes_condicion}</p>
@@ -1167,7 +1242,58 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 </div>
               )}
             </div>
-          </div>
+
+            {/* Bitácora de Traslados y Viajes */}
+            {['admin', 'supervisor'].includes(userRole) && (
+              <div className="panel-card" style={{ marginTop: '1.5rem' }}>
+                <div className="panel-header" style={{ marginBottom: '1rem' }}>
+                  <h3>Bitácora de Traslados y Viajes</h3>
+                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>Sincronizado de terreno (AppSheet / Operador)</span>
+                </div>
+                
+                {travelList.length > 0 ? (
+                  <div className="table-responsive">
+                    <table className="table table-hover" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--panel-border)', color: 'var(--text-secondary)' }}>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.8rem' }}>Fecha</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.8rem' }}>Conductor</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.8rem' }}>Vehículo</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem' }}>Kilómetros</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem' }}>Salida / Llegada (Taller - Faena)</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem' }}>Retorno (Faena - Taller)</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.8rem' }}>Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {travelList.map(t => (
+                          <tr key={t.id} style={{ borderBottom: '1px solid var(--panel-border)', fontSize: '0.85rem' }}>
+                            <td style={{ padding: '0.5rem' }}>{t.fecha}</td>
+                            <td style={{ padding: '0.5rem' }}>{t.trabajador_nombre}</td>
+                            <td style={{ padding: '0.5rem' }}><strong>{t.patente_vehiculo}</strong></td>
+                            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              {t.km_inicio} - {t.km_termino || '?'} km ({t.km_termino ? (t.km_termino - t.km_inicio).toFixed(1) : '?'} km)
+                            </td>
+                            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              {t.hora_salida_taller || '--'} ➡️ {t.hora_llegada_faena || '--'}
+                            </td>
+                            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              {t.hora_salida_faena || '--'} ➡️ {t.hora_llegada_taller || '--'}
+                            </td>
+                            <td style={{ padding: '0.5rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{t.detalle_viaje || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-secondary)', border: '1px dashed var(--panel-border)', borderRadius: '0.75rem' }}>
+                    No se han registrado viajes de traslado para esta OT.
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
 
           {/* Right Column: Logs of HH and Expenses */}
           <div>

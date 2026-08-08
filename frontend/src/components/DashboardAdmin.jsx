@@ -152,6 +152,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [showItemModal, setShowItemModal] = useState(false);
   const [newItem, setNewItem] = useState({ sku: '', descripcion: '', familia: '', unidad_medida: '', proveedor: '', stock: 0, ubicacion: '', valor_unitario: 0 });
   const [showMovModal, setShowMovModal] = useState(false);
+  const [showCriticalStockModal, setShowCriticalStockModal] = useState(false);
   const [newMov, setNewMov] = useState({ tipo: 'ENTRADA', sku: '', fecha: new Date().toISOString().split('T')[0], cantidad: 0, valor_unitario: 0, factura_num: '', proveedor_o_cliente: '', ot_id: '' });
 
   // Activos States
@@ -1068,7 +1069,12 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       Existencias y alertas de stock mínimo
                     </span>
                     {inventario.some(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)) && (
-                      <span className="badge badge-warning" style={{ marginLeft: '0.75rem', fontSize: '0.75rem' }}>
+                      <span 
+                        className="badge badge-warning" 
+                        style={{ marginLeft: '1rem', fontSize: '1rem', padding: '0.4rem 0.8rem', fontWeight: '700', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+                        onClick={() => setShowCriticalStockModal(true)}
+                        title="Hacer clic para ver detalles del stock crítico"
+                      >
                         🚨 {inventario.filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).length} en Stock Crítico
                       </span>
                     )}
@@ -1681,6 +1687,75 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                 </button>
               )}
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: STOCK CRÍTICO */}
+      {showCriticalStockModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🚨 Artículos en Stock Crítico
+              </h3>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowCriticalStockModal(false)}>Cerrar</button>
+            </div>
+            
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <table className="table table-hover" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--panel-border)', color: 'var(--text-secondary)' }}>
+                    <th style={{ padding: '0.6rem', textAlign: 'left' }}>SKU</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'left' }}>Descripción</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'left' }}>Proveedor</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'left' }}>Ubicación</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center' }}>Stock Mín.</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', color: '#ef4444' }}>Stock Actual</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventario.filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).map(item => (
+                    <tr key={item.sku} style={{ borderBottom: '1px solid var(--panel-border)' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 600 }}>{item.sku}</td>
+                      <td style={{ padding: '0.6rem' }}>{item.descripcion}</td>
+                      <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{item.proveedor || '-'}</td>
+                      <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{item.ubicacion || '-'}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center' }}>{item.stock_minimo !== undefined ? item.stock_minimo : 10}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', fontWeight: 'bold', color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.08)' }}>
+                        {item.stock} {item.unidad_medida || 'u'}
+                      </td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }} 
+                          title="Editar SKU / Stock Mínimo"
+                          onClick={() => {
+                            const minVal = item.stock_minimo !== undefined ? item.stock_minimo : 10;
+                            setNewItem({ ...item, old_sku: item.sku, stock_minimo: minVal, isEditing: true });
+                            setShowItemModal(true);
+                          }}
+                        >
+                          ✏️ Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {inventario.filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).length === 0 && (
+                    <tr>
+                      <td colSpan="7" className="text-center p-4 text-muted">No hay artículos con stock crítico.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem', borderTop: '1px solid var(--panel-border)', paddingTop: '1rem' }}>
+              <button className="btn btn-secondary" onClick={() => setShowCriticalStockModal(false)}>
+                Aceptar
+              </button>
+            </div>
           </div>
         </div>
       )}

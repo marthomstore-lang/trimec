@@ -196,6 +196,24 @@ export const initDb = async () => {
     await pgPool.query(`
       ALTER TABLE gastos_generales ADD COLUMN IF NOT EXISTS fecha_vencimiento VARCHAR(255);
     `).catch(err => console.log('Error adding fecha_vencimiento to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_rol_check;
+    `).catch(err => {});
+    await pgPool.query(`
+      ALTER TABLE usuarios ADD CONSTRAINT usuarios_rol_check CHECK(rol IN ('admin', 'supervisor', 'contador', 'operador'));
+    `).catch(err => console.log('Error updating usuarios_rol_check in postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE gastos_diarios ADD COLUMN IF NOT EXISTS foto_boleta TEXT;
+    `).catch(err => console.log('Error adding foto_boleta to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS hora_inicio_ejecucion VARCHAR(255);
+    `).catch(err => console.log('Error adding hora_inicio_ejecucion to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS hora_fin_ejecucion VARCHAR(255);
+    `).catch(err => console.log('Error adding hora_fin_ejecucion to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS tecnico_id INTEGER;
+    `).catch(err => console.log('Error adding tecnico_id to postgres:', err.message));
   }
 
   // Migraciones automáticas sólo en SQLite (en Supabase la BD se inicia de cero o vía script)
@@ -305,6 +323,34 @@ export const initDb = async () => {
         }
       }
     } catch (e) { }
+
+    try {
+      const gdCols = await query("PRAGMA table_info(gastos_diarios)");
+      if (gdCols && gdCols.length > 0) {
+        const hasFoto = gdCols.some(c => c.name === 'foto_boleta');
+        if (!hasFoto) {
+          await run("ALTER TABLE gastos_diarios ADD COLUMN foto_boleta TEXT");
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const infCols = await query("PRAGMA table_info(informes_tecnicos)");
+      if (infCols && infCols.length > 0) {
+        const hasHoraIni = infCols.some(c => c.name === 'hora_inicio_ejecucion');
+        if (!hasHoraIni) {
+          await run("ALTER TABLE informes_tecnicos ADD COLUMN hora_inicio_ejecucion TEXT");
+        }
+        const hasHoraFin = infCols.some(c => c.name === 'hora_fin_ejecucion');
+        if (!hasHoraFin) {
+          await run("ALTER TABLE informes_tecnicos ADD COLUMN hora_fin_ejecucion TEXT");
+        }
+        const hasTecnico = infCols.some(c => c.name === 'tecnico_id');
+        if (!hasTecnico) {
+          await run("ALTER TABLE informes_tecnicos ADD COLUMN tecnico_id INTEGER");
+        }
+      }
+    } catch (e) {}
   }
 
   // DDLs unificados (se traducen en caliente para Postgres)
@@ -314,7 +360,7 @@ export const initDb = async () => {
       nombre TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      rol TEXT NOT NULL CHECK(rol IN ('admin', 'supervisor', 'contador'))
+      rol TEXT NOT NULL CHECK(rol IN ('admin', 'supervisor', 'contador', 'operador'))
     )
   `));
 
@@ -497,7 +543,27 @@ export const initDb = async () => {
       despues_tareas TEXT,
       recomendaciones TEXT,
       fotos_antes TEXT,
-      fotos_despues TEXT
+      fotos_despues TEXT,
+      hora_inicio_ejecucion TEXT,
+      hora_fin_ejecucion TEXT,
+      tecnico_id INTEGER
+    )
+  `));
+
+  await run(translateDdl(`
+    CREATE TABLE IF NOT EXISTS traslados_viajes (
+      id SERIAL PRIMARY KEY,
+      ot_id TEXT NOT NULL,
+      trabajador_id INTEGER NOT NULL,
+      fecha TEXT NOT NULL,
+      patente_vehiculo TEXT NOT NULL,
+      km_inicio REAL NOT NULL DEFAULT 0.0,
+      km_termino REAL NOT NULL DEFAULT 0.0,
+      hora_salida_taller TEXT,
+      hora_llegada_faena TEXT,
+      hora_salida_faena TEXT,
+      hora_llegada_taller TEXT,
+      detalle_viaje TEXT
     )
   `));
 

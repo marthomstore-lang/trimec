@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { get, run, query, initDb } from './db.js';
-import { generateBudgetPDF } from './pdfGenerator.js';
+import { generateBudgetPDF, generateTechnicalReportPDF } from './pdfGenerator.js';
 import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -531,7 +531,7 @@ app.get('/api/hh/ot/:ot_id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
   try {
     const result = await run(
@@ -544,7 +544,7 @@ app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor']), async (req
   }
 });
 
-app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { id } = req.params;
   const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
   try {
@@ -596,12 +596,12 @@ app.get('/api/gastos/ot/:ot_id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
-  const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total } = req.body;
+app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
+  const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta } = req.body;
   try {
     const result = await run(
-      'INSERT INTO gastos_diarios (ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [ot_id, fecha, clasificacion, detalle, cantidad || 1.0, valor_neto || 0.0, valor_iva || 0.0, valor_total || 0.0]
+      'INSERT INTO gastos_diarios (ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [ot_id, fecha, clasificacion, detalle, cantidad || 1.0, valor_neto || 0.0, valor_iva || 0.0, valor_total || 0.0, foto_boleta || null]
     );
     res.status(201).json({ id: result.id, message: 'Gasto registrado con éxito' });
   } catch (error) {
@@ -609,18 +609,18 @@ app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor']), async 
   }
 });
 
-app.put('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+app.put('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { id } = req.params;
-  const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total } = req.body;
+  const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta } = req.body;
   try {
     const net = parseFloat(valor_neto) || 0.0;
     const iva = valor_iva !== undefined ? parseFloat(valor_iva) : net * 0.19;
     const total = valor_total !== undefined ? parseFloat(valor_total) : net + iva;
     await run(
       `UPDATE gastos_diarios 
-       SET ot_id = ?, fecha = ?, clasificacion = ?, detalle = ?, cantidad = ?, valor_neto = ?, valor_iva = ?, valor_total = ?
+       SET ot_id = ?, fecha = ?, clasificacion = ?, detalle = ?, cantidad = ?, valor_neto = ?, valor_iva = ?, valor_total = ?, foto_boleta = ?
        WHERE id = ?`,
-      [ot_id, fecha, clasificacion, detalle, parseFloat(cantidad) || 1.0, net, iva, total, id]
+      [ot_id, fecha, clasificacion, detalle, parseFloat(cantidad) || 1.0, net, iva, total, foto_boleta || null, id]
     );
     res.json({ message: 'Gasto actualizado con éxito' });
   } catch (error) {
@@ -633,6 +633,116 @@ app.delete('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor']), 
   try {
     await run('DELETE FROM gastos_diarios WHERE id = ?', [id]);
     res.json({ message: 'Gasto eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// --- TRASLADOS Y VIAJES ROUTES ---
+app.get('/api/traslados/ot/:ot_id', authenticate, async (req, res) => {
+  const { ot_id } = req.params;
+  try {
+    const travels = await query(`
+      SELECT tv.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol
+      FROM traslados_viajes tv
+      JOIN trabajadores t ON tv.trabajador_id = t.id
+      WHERE tv.ot_id = ?
+      ORDER BY tv.fecha DESC, tv.id DESC
+    `, [ot_id]);
+    res.json(travels);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/traslados', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
+  const {
+    ot_id,
+    trabajador_id,
+    fecha,
+    patente_vehiculo,
+    km_inicio,
+    km_termino,
+    hora_salida_taller,
+    hora_llegada_faena,
+    hora_salida_faena,
+    hora_llegada_taller,
+    detalle_viaje
+  } = req.body;
+
+  try {
+    const result = await run(`
+      INSERT INTO traslados_viajes (
+        ot_id, trabajador_id, fecha, patente_vehiculo, km_inicio, km_termino,
+        hora_salida_taller, hora_llegada_faena, hora_salida_faena, hora_llegada_taller, detalle_viaje
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      ot_id,
+      trabajador_id,
+      fecha,
+      patente_vehiculo,
+      parseFloat(km_inicio) || 0.0,
+      parseFloat(km_termino) || 0.0,
+      hora_salida_taller || null,
+      hora_llegada_faena || null,
+      hora_salida_faena || null,
+      hora_llegada_taller || null,
+      detalle_viaje || null
+    ]);
+    res.status(201).json({ id: result.id, message: 'Traslado registrado con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
+  const { id } = req.params;
+  const {
+    ot_id,
+    trabajador_id,
+    fecha,
+    patente_vehiculo,
+    km_inicio,
+    km_termino,
+    hora_salida_taller,
+    hora_llegada_faena,
+    hora_salida_faena,
+    hora_llegada_taller,
+    detalle_viaje
+  } = req.body;
+
+  try {
+    await run(`
+      UPDATE traslados_viajes 
+      SET ot_id = ?, trabajador_id = ?, fecha = ?, patente_vehiculo = ?, km_inicio = ?, km_termino = ?,
+          hora_salida_taller = ?, hora_llegada_faena = ?, hora_salida_faena = ?, hora_llegada_taller = ?, detalle_viaje = ?
+      WHERE id = ?
+    `, [
+      ot_id,
+      trabajador_id,
+      fecha,
+      patente_vehiculo,
+      parseFloat(km_inicio) || 0.0,
+      parseFloat(km_termino) || 0.0,
+      hora_salida_taller || null,
+      hora_llegada_faena || null,
+      hora_salida_faena || null,
+      hora_llegada_taller || null,
+      detalle_viaje || null,
+      id
+    ]);
+    res.json({ message: 'Traslado actualizado con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await run('DELETE FROM traslados_viajes WHERE id = ?', [id]);
+    res.json({ message: 'Traslado eliminado' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -880,6 +990,56 @@ app.get('/api/ots/:id/pdf', async (req, res) => {
   } catch (error) {
     console.error('Error al generar PDF:', error);
     res.status(500).send('Error interno al generar el PDF del presupuesto.');
+  }
+});
+
+app.get('/api/ots/:id/informe-pdf', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const ot = await get(`
+      SELECT o.*, c.razon_social, c.rut, c.contacto_nombre, c.contacto_email, c.contacto_telefono 
+      FROM ordenes_trabajo o 
+      JOIN clientes c ON o.cliente_id = c.id
+      WHERE o.id = ?
+    `, [id]);
+
+    if (!ot) {
+      return res.status(404).send('Orden de Trabajo no encontrada');
+    }
+
+    const client = {
+      razon_social: ot.razon_social,
+      rut: ot.rut,
+      contacto_nombre: ot.contacto_nombre,
+      contacto_email: ot.contacto_email,
+      contacto_telefono: ot.contacto_telefono
+    };
+
+    const report = await get('SELECT * FROM informes_tecnicos WHERE ot_id = ?', [id]);
+
+    const travelList = await query(`
+      SELECT tv.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol
+      FROM traslados_viajes tv
+      JOIN trabajadores t ON tv.trabajador_id = t.id
+      WHERE tv.ot_id = ?
+      ORDER BY tv.fecha ASC, tv.id ASC
+    `, [id]);
+
+    const hhList = await query(`
+      SELECT r.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol
+      FROM registro_hh r
+      JOIN trabajadores t ON r.trabajador_id = t.id
+      WHERE r.ot_id = ?
+      ORDER BY r.fecha ASC
+    `, [id]);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=informe-tecnico-ot-${id}.pdf`);
+
+    generateTechnicalReportPDF(ot, client, report, { travelList, hhList }, res);
+  } catch (error) {
+    console.error('Error al generar PDF de Informe Técnico:', error);
+    res.status(500).send('Error interno al generar el PDF del informe técnico.');
   }
 });
 
@@ -1236,22 +1396,43 @@ app.get('/api/informes/ot/:ot_id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id } = req.params;
-  const { antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues } = req.body;
+  const { antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues, hora_inicio_ejecucion, hora_fin_ejecucion, tecnico_id } = req.body;
   try {
     const existing = await get('SELECT id FROM informes_tecnicos WHERE ot_id = ?', [ot_id]);
     if (existing) {
       await run(`
         UPDATE informes_tecnicos 
-        SET antes_condicion = ?, despues_tareas = ?, recomendaciones = ?, fotos_antes = ?, fotos_despues = ?
+        SET antes_condicion = ?, despues_tareas = ?, recomendaciones = ?, fotos_antes = ?, fotos_despues = ?,
+            hora_inicio_ejecucion = ?, hora_fin_ejecucion = ?, tecnico_id = ?
         WHERE ot_id = ?
-      `, [antes_condicion, despues_tareas, recomendaciones, typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []), typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []), ot_id]);
+      `, [
+        antes_condicion,
+        despues_tareas,
+        recomendaciones,
+        typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []),
+        typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []),
+        hora_inicio_ejecucion || null,
+        hora_fin_ejecucion || null,
+        tecnico_id ? parseInt(tecnico_id, 10) : null,
+        ot_id
+      ]);
     } else {
       await run(`
-        INSERT INTO informes_tecnicos (ot_id, antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [ot_id, antes_condicion, despues_tareas, recomendaciones, typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []), typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || [])]);
+        INSERT INTO informes_tecnicos (ot_id, antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues, hora_inicio_ejecucion, hora_fin_ejecucion, tecnico_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        ot_id,
+        antes_condicion,
+        despues_tareas,
+        recomendaciones,
+        typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []),
+        typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []),
+        hora_inicio_ejecucion || null,
+        hora_fin_ejecucion || null,
+        tecnico_id ? parseInt(tecnico_id, 10) : null
+      ]);
     }
     res.json({ message: 'Informe técnico guardado con éxito' });
   } catch (error) {

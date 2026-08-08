@@ -360,3 +360,236 @@ export const generateBudgetPDF = (ot, client, { hhList = [], expensesList = [] }
 
   doc.end();
 };
+
+export const generateTechnicalReportPDF = (ot, client, report, { travelList = [], hhList = [] }, res) => {
+  const doc = new PDFDocument({ margin: 30, size: 'LETTER', autoFirstPage: true });
+
+  // Pipe to response
+  doc.pipe(res);
+
+  const black = '#000000';
+  const red = '#CC0000';
+  const headerBg = '#EAEAEA';
+  const borderGray = '#666666';
+
+  let currentY = 25;
+
+  const checkPageOverflow = (needed = 15) => {
+    if (currentY + needed > 680) {
+      doc.addPage();
+      currentY = 40;
+      return true;
+    }
+    return false;
+  };
+
+  // --- TOP HEADER ---
+  doc.fillColor(black).fontSize(16).text('INFORME TÉCNICO DE MANTENCIÓN', 140, 25, { bold: true });
+  doc.fontSize(10).text(`N° : OT - ${ot.id}`, 240, 42, { bold: true });
+
+  const fechaText = ot.fecha_entrega || new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  doc.fontSize(8).text(`FECHA ENTREGA: ${fechaText}`, 400, 25);
+
+  const faenaText = ot.faena ? ot.faena.toUpperCase() : 'FAENA GENERAL.-';
+  doc.fillColor(red).fontSize(9).text(faenaText, 320, 75, { bold: true });
+
+  // Logo Trimec
+  doc.fillColor('#003366').fontSize(18).text('TRIMEC', 40, 60, { bold: true });
+  doc.fontSize(6).fillColor(black).text('INGENIERIA MECANICA - MANTENIMIENTO INDUSTRIAL', 40, 80);
+
+  // --- ANTECEDENTES (2 COLUMNS BOXES) ---
+  currentY = 100;
+
+  // Box 1: Prestador
+  doc.rect(40, currentY, 260, 95).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.fillColor(black).fontSize(8).text('EMPRESA PRESTADORA DE SERVICIO', 45, currentY + 4, { bold: true });
+  doc.moveTo(40, currentY + 14).lineTo(300, currentY + 14).stroke();
+
+  const pY = currentY + 18;
+  doc.fontSize(7.5)
+    .text('RUT', 45, pY).text(': 77.546.806-8', 105, pY)
+    .text('Supervisor', 45, pY + 9).text(': Angelo Muñoz V.', 105, pY + 9)
+    .text('E-Mail', 45, pY + 18).text(': angelo.munoz@trimec-spa.cl', 105, pY + 18, { color: 'blue' })
+    .text('Fono', 45, pY + 27).text(': (+569) 3241 5655', 105, pY + 27)
+    .text('Dirección', 45, pY + 36).text(': Camino a Ranchillo bajo lote 9, Campanario, Yungay.', 105, pY + 36);
+
+  // Box 2: Cliente
+  doc.rect(310, currentY, 260, 95).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.fillColor(black).fontSize(8).text('DATOS DEL CLIENTE', 315, currentY + 4, { bold: true });
+  doc.moveTo(310, currentY + 14).lineTo(570, currentY + 14).stroke();
+
+  const cY = currentY + 18;
+  doc.fontSize(7.5)
+    .text('Señores', 315, cY).text(`: ${client.razon_social || '-'}`, 370, cY)
+    .text('Ciudad', 315, cY + 9).text(`: ${client.ciudad || '-'}`, 370, cY + 9)
+    .text('Dirección', 315, cY + 18).text(`: ${client.direccion || '-'}`, 370, cY + 18)
+    .text('RUT', 315, cY + 27).text(`: ${client.rut || '-'}`, 370, cY + 27)
+    .text('Contacto', 315, cY + 36).text(`: Sr.- ${client.contacto_nombre || '-'}`, 370, cY + 36);
+
+  // --- RESUMEN DEL SERVICIO ---
+  currentY += 105;
+  doc.rect(40, currentY, 530, 30).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.rect(40, currentY, 530, 12).fill(headerBg);
+  doc.fillColor(black).fontSize(8).text('DESCRIPCIÓN DEL REQUERIMIENTO', 40, currentY + 2, { align: 'center', width: 530, bold: true });
+  doc.fontSize(7.5).text(`OT N° ${ot.id}: ${ot.detalle}`, 45, currentY + 15);
+
+  currentY += 36;
+
+  // --- BITÁCORA DE EJECUCIÓN (HORARIOS EN FAENA) ---
+  if (report && (report.hora_inicio_ejecucion || report.hora_fin_ejecucion)) {
+    checkPageOverflow(40);
+    doc.rect(40, currentY, 530, 32).strokeColor(borderGray).lineWidth(0.8).stroke();
+    doc.rect(40, currentY, 530, 12).fill(headerBg);
+    doc.fillColor(black).fontSize(8).text('REGISTRO DE HORAS EN FAENA', 40, currentY + 2, { align: 'center', width: 530, bold: true });
+    
+    const hY = currentY + 16;
+    doc.fontSize(7.5)
+      .text(`Hora de Inicio de Ejecución: ${report.hora_inicio_ejecucion || '-'}`, 50, hY)
+      .text(`Hora de Término de Ejecución: ${report.hora_fin_ejecucion || '-'}`, 300, hY);
+    
+    currentY += 38;
+  }
+
+  // --- BITÁCORA DE TRASLADOS Y VEHÍCULO ---
+  if (travelList.length > 0) {
+    checkPageOverflow(45);
+    doc.rect(40, currentY, 530, 12).fill(headerBg);
+    doc.fillColor(black).fontSize(8).text('REGISTRO DE TRASLADOS Y VEHÍCULO', 45, currentY + 2, { bold: true });
+    currentY += 12;
+
+    doc.rect(40, currentY, 530, 12).strokeColor(borderGray).stroke();
+    doc.fontSize(7)
+      .text('Fecha', 45, currentY + 2, { width: 50 })
+      .text('Patente', 100, currentY + 2, { width: 50 })
+      .text('Km Inicio', 155, currentY + 2, { width: 45, align: 'center' })
+      .text('Km Término', 205, currentY + 2, { width: 45, align: 'center' })
+      .text('Salida Taller', 255, currentY + 2, { width: 55, align: 'center' })
+      .text('Llegada Faena', 315, currentY + 2, { width: 55, align: 'center' })
+      .text('Retorno Faena', 375, currentY + 2, { width: 55, align: 'center' })
+      .text('Llegada Taller', 435, currentY + 2, { width: 55, align: 'center' })
+      .text('Detalle', 495, currentY + 2, { width: 70 });
+
+    currentY += 12;
+
+    travelList.forEach(t => {
+      checkPageOverflow(12);
+      doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
+      doc.fontSize(6.5)
+        .text(t.fecha || '', 45, currentY + 2, { width: 50 })
+        .text(t.patente_vehiculo || '', 100, currentY + 2, { width: 50 })
+        .text((t.km_inicio || 0).toString(), 155, currentY + 2, { width: 45, align: 'center' })
+        .text((t.km_termino || 0).toString(), 205, currentY + 2, { width: 45, align: 'center' })
+        .text(t.hora_salida_taller || '-', 255, currentY + 2, { width: 55, align: 'center' })
+        .text(t.hora_llegada_faena || '-', 315, currentY + 2, { width: 55, align: 'center' })
+        .text(t.hora_salida_faena || '-', 375, currentY + 2, { width: 55, align: 'center' })
+        .text(t.hora_llegada_taller || '-', 435, currentY + 2, { width: 55, align: 'center' })
+        .text(t.detalle_viaje || '-', 495, currentY + 2, { width: 70 });
+      currentY += 11;
+    });
+
+    currentY += 4;
+  }
+
+  // --- TRABAJO EJECUTADO ---
+  if (report) {
+    checkPageOverflow(40);
+    doc.fillColor(black).fontSize(8.5).text('1. CONDICIÓN INICIAL / ANTECEDENTES:', 40, currentY, { bold: true });
+    doc.fontSize(7.5).text(report.antes_condicion || 'No especificado.', 40, currentY + 12, { width: 530 });
+    const hAntes = doc.heightOfString(report.antes_condicion || '', { width: 530 }) + 20;
+    currentY += hAntes;
+
+    checkPageOverflow(40);
+    doc.fillColor(black).fontSize(8.5).text('2. TAREAS EJECUTADAS / SOLUCIÓN:', 40, currentY, { bold: true });
+    doc.fontSize(7.5).text(report.despues_tareas || 'No especificado.', 40, currentY + 12, { width: 530 });
+    const hDesp = doc.heightOfString(report.despues_tareas || '', { width: 530 }) + 20;
+    currentY += hDesp;
+
+    if (report.recomendaciones) {
+      checkPageOverflow(40);
+      doc.fillColor(black).fontSize(8.5).text('3. RECOMENDACIONES TÉCNICAS:', 40, currentY, { bold: true });
+      doc.fontSize(7.5).text(report.recomendaciones || 'Sin recomendaciones.', 40, currentY + 12, { width: 530 });
+      const hRec = doc.heightOfString(report.recomendaciones || '', { width: 530 }) + 20;
+      currentY += hRec;
+    }
+  }
+
+  // --- REGISTRO FOTOGRÁFICO ---
+  if (report) {
+    let fotosA = [];
+    let fotosD = [];
+    try {
+      fotosA = typeof report.fotos_antes === 'string' ? JSON.parse(report.fotos_antes) : (report.fotos_antes || []);
+    } catch(e) {
+      if (report.fotos_antes) fotosA = [report.fotos_antes];
+    }
+    try {
+      fotosD = typeof report.fotos_despues === 'string' ? JSON.parse(report.fotos_despues) : (report.fotos_despues || []);
+    } catch(e) {
+      if (report.fotos_despues) fotosD = [report.fotos_despues];
+    }
+
+    if (fotosA.length > 0 || fotosD.length > 0) {
+      doc.addPage();
+      currentY = 40;
+      doc.fillColor(black).fontSize(10).text('REGISTRO FOTOGRÁFICO', 40, currentY, { bold: true, align: 'center' });
+      currentY += 20;
+
+      // Imprimir fotos del antes
+      if (fotosA.length > 0) {
+        doc.fontSize(8.5).text('REGISTRO FOTOGRÁFICO - ANTES DEL TRABAJO', 40, currentY, { bold: true });
+        currentY += 15;
+        
+        let xOffset = 40;
+        fotosA.forEach((foto, idx) => {
+          doc.rect(xOffset, currentY, 150, 110).strokeColor(borderGray).stroke();
+          doc.fontSize(6).text(`Imagen Antes #${idx + 1}\nPath: ${foto}`, xOffset + 5, currentY + 50, { width: 140, align: 'center' });
+          
+          xOffset += 170;
+          if (xOffset > 500) {
+            xOffset = 40;
+            currentY += 125;
+          }
+        });
+        currentY += 135;
+      }
+
+      // Imprimir fotos del después
+      if (fotosD.length > 0) {
+        checkPageOverflow(150);
+        doc.fontSize(8.5).text('REGISTRO FOTOGRÁFICO - DESPUÉS DEL TRABAJO (EJECUTADO)', 40, currentY, { bold: true });
+        currentY += 15;
+
+        let xOffset = 40;
+        fotosD.forEach((foto, idx) => {
+          doc.rect(xOffset, currentY, 150, 110).strokeColor(borderGray).stroke();
+          doc.fontSize(6).text(`Imagen Después #${idx + 1}\nPath: ${foto}`, xOffset + 5, currentY + 50, { width: 140, align: 'center' });
+          
+          xOffset += 170;
+          if (xOffset > 500) {
+            xOffset = 40;
+            currentY += 125;
+          }
+        });
+        currentY += 135;
+      }
+    }
+  }
+
+  // --- FIRMA ---
+  let sigY = currentY + 15;
+  if (sigY + 70 > 720) {
+    doc.addPage();
+    sigY = 40;
+  }
+  doc.strokeColor('blue').lineWidth(1.5);
+  doc.moveTo(430, sigY + 20).quadraticCurveTo(460, sigY - 10, 480, sigY + 25).stroke();
+  doc.moveTo(450, sigY + 10).quadraticCurveTo(470, sigY + 30, 500, sigY + 5).stroke();
+
+  doc.fillColor(black).fontSize(8)
+    .text('Angelo Muñoz V.', 410, sigY + 35, { align: 'center', width: 140, bold: true })
+    .fontSize(7)
+    .text('77.546.806-8', 410, sigY + 45, { align: 'center', width: 140 })
+    .text('Jefe de Maestranza - Trimec SpA.', 410, sigY + 54, { align: 'center', width: 140 });
+
+  doc.end();
+};

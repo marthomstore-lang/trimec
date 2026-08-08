@@ -3,6 +3,7 @@ import Login from './components/Login';
 import DashboardAdmin from './components/DashboardAdmin';
 import DashboardSupervisor from './components/DashboardSupervisor';
 import DashboardContador from './components/DashboardContador';
+import DashboardOperador from './components/DashboardOperador';
 import OtDetail from './components/OtDetail';
 import api from './utils/api';
 
@@ -63,7 +64,7 @@ function App() {
             Conectado como: <strong>{user.nombre}</strong>
           </span>
           <span className={`user-badge ${user.rol}`}>
-            {user.rol === 'admin' ? 'Administrador' : user.rol === 'supervisor' ? 'Supervisor' : 'Contador'}
+            {user.rol === 'admin' ? 'Administrador' : user.rol === 'supervisor' ? 'Supervisor' : user.rol === 'contador' ? 'Contador' : 'Operador'}
           </span>
           <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
             Cerrar Sesión
@@ -90,6 +91,9 @@ function App() {
             )}
             {user.rol === 'contador' && (
               <DashboardContador onSelectOt={setSelectedOtId} showToast={showToast} />
+            )}
+            {user.rol === 'operador' && (
+              <DashboardOperador showToast={showToast} />
             )}
           </>
         )}

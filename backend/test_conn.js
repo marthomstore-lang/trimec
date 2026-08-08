@@ -1,26 +1,45 @@
+import 'dotenv/config';
+import dns from 'dns';
 import pkg from 'pg';
 const { Client } = pkg;
 
-const targetUrl = 'postgresql://postgres:TrimecSecureDBPassword2026!@db.mhcikqbggxqasspuzbto.supabase.co:5432/postgres';
+// Configurar resolución de nombres
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {}
 
-const client = new Client({
-  connectionString: targetUrl,
-  ssl: { rejectUnauthorized: false }
-});
+const connectionStrings = [
+  process.env.DATABASE_URL,
+  'postgresql://postgres:TrimecSecureDBPassword2026!@db.mhcikqbggxqasspuzbto.supabase.co:5432/postgres',
+  'postgresql://postgres.mhcikqbggxqasspuzbto:TrimecSecureDBPassword2026!@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
+  'postgresql://postgres.mhcikqbggxqasspuzbto:TrimecSecureDBPassword2026!@aws-0-us-east-1.pooler.supabase.com:5432/postgres',
+  'postgresql://postgres.mhcikqbggxqasspuzbto:TrimecSecureDBPassword2026!@aws-0-sa-east-1.pooler.supabase.com:6543/postgres',
+  'postgresql://postgres.mhcikqbggxqasspuzbto:TrimecSecureDBPassword2026!@aws-0-sa-east-1.pooler.supabase.com:5432/postgres',
+];
 
-async function test() {
-  try {
-    console.log('Probando conexión a Supabase...');
-    await client.connect();
-    console.log('¡Conexión exitosa!');
-    
-    const res = await client.query('SELECT id, nombre, email, password_hash, rol FROM usuarios');
-    console.log('Usuarios en la base de datos:', res.rows);
-  } catch (err) {
-    console.error('ERROR CONEXION:', err);
-  } finally {
-    await client.end();
+async function testConnections() {
+  for (const url of connectionStrings) {
+    if (!url) continue;
+    console.log(`\nProbando conexión: ${url.replace(/:[^:@]+@/, ':***@')}`);
+    const client = new Client({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000
+    });
+
+    try {
+      await client.connect();
+      console.log('¡CONEXIÓN EXITOSA!');
+      const res = await client.query('SELECT count(*) FROM usuarios');
+      console.log('Total usuarios:', res.rows[0].count);
+      await client.end();
+      return url;
+    } catch (err) {
+      console.error('Error de conexión:', err.message);
+      await client.end().catch(() => {});
+    }
   }
 }
 
-test();
+testConnections();
+
