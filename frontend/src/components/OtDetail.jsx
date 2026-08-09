@@ -1040,6 +1040,28 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                 <h3>Documentos y Fotos Adjuntos</h3>
                 <span className="badge badge-terminada">{`${files.length} archivos`}</span>
               </div>
+
+              {/* Google Drive Integration Info/Link */}
+              <div style={{ marginBottom: '1.25rem', background: 'rgba(66, 133, 244, 0.08)', border: '1px solid rgba(66, 133, 244, 0.3)', padding: '0.75rem', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                  <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>📁</span>
+                  <div style={{ overflow: 'hidden' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#4285f4', fontWeight: 600 }}>Carpeta de Almacenamiento en Google Drive</h4>
+                    <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                      Respaldo de OTs, fotos de terreno de operarios y órdenes de compra.
+                    </p>
+                  </div>
+                </div>
+                <a 
+                  href="https://drive.google.com/drive/folders/1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz?usp=sharing" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4' }}
+                >
+                  Ir a Drive ➡️
+                </a>
+              </div>
               
               <div style={{ marginBottom: '1.25rem' }}>
                 <label className="btn btn-secondary btn-sm" style={{ display: 'block', textAlign: 'center', cursor: 'pointer', opacity: uploading ? 0.6 : 1, padding: '0.5rem' }}>
