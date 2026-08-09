@@ -99,3 +99,24 @@ export async function uploadFileToDrive(folderId, fileName, mimeType, buffer) {
     return null;
   }
 }
+
+export async function deleteFileFromDrive(fileId) {
+  const auth = getAuthClient();
+  if (!auth) {
+    console.warn('Google Drive credentials not configured. Skipping file deletion from Drive.');
+    return false;
+  }
+
+  try {
+    const drive = google.drive({ version: 'v3', auth });
+    await drive.files.delete({
+      auth,
+      fileId: fileId
+    });
+    console.log(`File deleted successfully from Google Drive (ID: ${fileId})`);
+    return true;
+  } catch (error) {
+    console.error('Error deleting file from Google Drive (API Error):', error.message || error);
+    return false;
+  }
+}

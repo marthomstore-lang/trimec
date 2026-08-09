@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { get, run, query, initDb } from './db.js';
 import { generateBudgetPDF, generateTechnicalReportPDF } from './pdfGenerator.js';
 import { createClient } from '@supabase/supabase-js';
-import { createDriveFolder, uploadFileToDrive } from './googleDrive.js';
+import { createDriveFolder, uploadFileToDrive, deleteFileFromDrive } from './googleDrive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1206,7 +1206,16 @@ app.delete('/api/archivos/:id', authenticate, checkRole(['admin', 'supervisor'])
     
     const isUrl = file.nombre_guardado.startsWith('http://') || file.nombre_guardado.startsWith('https://');
     
-    if (isUrl && supabase) {
+    if (isUrl && file.nombre_guardado.includes('drive.google.com')) {
+      // Es un archivo de Google Drive
+      const fileIdMatch = file.nombre_guardado.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) || file.nombre_guardado.match(/id=([a-zA-Z0-9-_]+)/);
+      const fileId = fileIdMatch ? fileIdMatch[1] : null;
+      if (fileId) {
+        console.log(`Eliminando archivo de Google Drive: ${fileId}`);
+        await deleteFileFromDrive(fileId);
+      }
+    } else if (isUrl && supabase) {
+      // Es un archivo de Supabase Storage
       const parts = file.nombre_guardado.split('/trimec-archivos/');
       const filenameUnique = parts[parts.length - 1];
       
