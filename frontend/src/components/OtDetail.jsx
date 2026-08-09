@@ -241,6 +241,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [showInformePreview, setShowInformePreview] = useState(false);
   const [travelList, setTravelList] = useState([]);
   const [generatingDrive, setGeneratingDrive] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
+
+  const requestConfirm = (title, message, onConfirm) => {
+    setConfirmModal({
+      show: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(prev => ({ ...prev, show: false }));
+      }
+    });
+  };
 
   const handleGenerateDriveFolder = async () => {
     setGeneratingDrive(true);
@@ -326,29 +339,41 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
         showToast('Insumo no encontrado', 'danger');
         return;
       }
-      if (selectedItem.stock < newConsumo.cantidad) {
-        if (!window.confirm(`El stock disponible (${selectedItem.stock}) es menor a la cantidad solicitada (${newConsumo.cantidad}). ¿Desea proceder de todas formas?`)) {
-          return;
+
+      const executeConsumo = async () => {
+        try {
+          await api('/inventario/movimiento', {
+            method: 'POST',
+            body: JSON.stringify({
+              tipo: 'SALIDA',
+              sku: newConsumo.sku,
+              cantidad: parseFloat(newConsumo.cantidad),
+              fecha: newConsumo.fecha,
+              valor_unitario: selectedItem.valor_unitario,
+              proveedor_o_cliente: 'Despacho OT',
+              ot_id: otId
+            })
+          });
+          showToast('Consumo de inventario registrado y cargado a la OT', 'success');
+          setShowAddConsumoForm(false);
+          setNewConsumo({ sku: '', cantidad: 1, fecha: new Date().toISOString().split('T')[0] });
+          fetchOtDetail();
+        } catch (err) {
+          showToast(err.message || 'Error al registrar consumo', 'danger');
         }
+      };
+
+      if (selectedItem.stock < newConsumo.cantidad) {
+        requestConfirm(
+          'Advertencia de Stock Crítico ⚠️',
+          `El stock disponible (${selectedItem.stock}) es menor a la cantidad solicitada (${newConsumo.cantidad}). ¿Desea proceder y registrar la salida de todas formas?`,
+          executeConsumo
+        );
+      } else {
+        await executeConsumo();
       }
-      await api('/inventario/movimiento', {
-        method: 'POST',
-        body: JSON.stringify({
-          tipo: 'SALIDA',
-          sku: newConsumo.sku,
-          cantidad: parseFloat(newConsumo.cantidad),
-          fecha: newConsumo.fecha,
-          valor_unitario: selectedItem.valor_unitario,
-          proveedor_o_cliente: 'Despacho OT',
-          ot_id: otId
-        })
-      });
-      showToast('Consumo de inventario registrado y cargado a la OT', 'success');
-      setShowAddConsumoForm(false);
-      setNewConsumo({ sku: '', cantidad: 1, fecha: new Date().toISOString().split('T')[0] });
-      fetchOtDetail();
     } catch (err) {
-      showToast(err.message || 'Error al registrar consumo', 'danger');
+      showToast(err.message || 'Error al procesar insumo', 'danger');
     }
   };
 
@@ -468,14 +493,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   };
 
   const handleDeleteHh = async (id) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este registro de horas?')) return;
-    try {
-      await api(`/hh/${id}`, { method: 'DELETE' });
-      showToast('Registro de horas eliminado', 'success');
-      fetchOtDetail();
-    } catch (err) {
-      showToast(err.message || 'Error al eliminar registro de horas', 'danger');
-    }
+    requestConfirm(
+      'Eliminar Registro de Horas 🕒',
+      '¿Seguro que deseas eliminar este registro de horas imputadas? Esta acción no se puede deshacer.',
+      async () => {
+        try {
+          await api(`/hh/${id}`, { method: 'DELETE' });
+          showToast('Registro de horas eliminado', 'success');
+          fetchOtDetail();
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar registro de horas', 'danger');
+        }
+      }
+    );
   };
 
   const handleUpdateExpenseSubmit = async (e) => {
@@ -506,14 +536,19 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   };
 
   const handleDeleteExpense = async (id) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este gasto?')) return;
-    try {
-      await api(`/gastos/${id}`, { method: 'DELETE' });
-      showToast('Gasto eliminado', 'success');
-      fetchOtDetail();
-    } catch (err) {
-      showToast(err.message || 'Error al eliminar gasto', 'danger');
-    }
+    requestConfirm(
+      'Eliminar Gasto Registrado 💰',
+      '¿Seguro que deseas eliminar este gasto registrado? Esta acción no se puede deshacer.',
+      async () => {
+        try {
+          await api(`/gastos/${id}`, { method: 'DELETE' });
+          showToast('Gasto eliminado', 'success');
+          fetchOtDetail();
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar gasto', 'danger');
+        }
+      }
+    );
   };
 
   const handleStatusChange = async (newStatus) => {
@@ -589,15 +624,20 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   };
 
   const handleDeleteFile = async (id) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este documento?')) return;
-    try {
-      await api(`/archivos/${id}`, { method: 'DELETE' });
-      showToast('Archivo eliminado', 'success');
-      const updatedFiles = await api(`/ots/${otId}/archivos`);
-      setFiles(updatedFiles);
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
+    requestConfirm(
+      'Eliminar Documento Adjunto 📁',
+      '¿Seguro que deseas eliminar este documento? Se borrará de la plataforma y también físicamente de tu subcarpeta en Google Drive. Esta acción no se puede deshacer.',
+      async () => {
+        try {
+          await api(`/archivos/${id}`, { method: 'DELETE' });
+          showToast('Archivo eliminado de la plataforma y de Google Drive', 'success');
+          const updatedFiles = await api(`/ots/${otId}/archivos`);
+          setFiles(updatedFiles);
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar archivo', 'danger');
+        }
+      }
+    );
   };
 
   const handleDownloadPdf = () => {
@@ -2001,6 +2041,44 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
               <button type="button" className="btn btn-secondary" onClick={() => setShowDeleteTplModal(false)}>Cancelar</button>
               <button type="button" className="btn btn-primary" style={{ background: '#ef4444', borderColor: '#ef4444' }} onClick={handleConfirmDeleteTemplate}>
                 Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN PREMIUM PERSONALIZADO */}
+      {confirmModal.show && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: '420px', padding: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+              <span style={{ fontSize: '1.75rem' }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>{confirmModal.title}</h3>
+            </div>
+            <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {confirmModal.message}
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.85rem', padding: '0.45rem 1rem' }} 
+                onClick={() => setConfirmModal(prev => ({ ...prev, show: false }))}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                style={{ 
+                  fontSize: '0.85rem', 
+                  padding: '0.45rem 1rem', 
+                  backgroundColor: confirmModal.title.includes('Eliminar') ? '#ef4444' : 'var(--primary)', 
+                  borderColor: confirmModal.title.includes('Eliminar') ? '#ef4444' : 'var(--primary)' 
+                }} 
+                onClick={confirmModal.onConfirm}
+              >
+                Aceptar
               </button>
             </div>
           </div>
