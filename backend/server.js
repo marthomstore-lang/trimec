@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { get, run, query, initDb } from './db.js';
 import { generateBudgetPDF, generateTechnicalReportPDF } from './pdfGenerator.js';
 import { createClient } from '@supabase/supabase-js';
-import { createDriveFolder } from './googleDrive.js';
+import { createDriveFolder, uploadFileToDrive } from './googleDrive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1120,30 +1120,54 @@ app.post('/api/ots/:otId/archivos', authenticate, async (req, res) => {
     const filenameUnique = `${otId}_${Date.now()}_${cleanName}${ext}`;
     
     let storedIdentifier = filenameUnique;
-    
-    if (supabase) {
-      // Subir a Supabase Storage Bucket
-      const { data, error } = await supabase.storage
-        .from('trimec-archivos')
-        .upload(filenameUnique, buffer, {
-          contentType: filetype,
-          duplex: 'half'
-        });
-      if (error) {
-        throw error;
+    let uploadSuccess = false;
+
+    // 1. Intentar subir a la carpeta específica de Google Drive si la OT la tiene
+    try {
+      const otRecord = await get('SELECT drive_folder_url FROM ordenes_trabajo WHERE id = ?', [otId]);
+      if (otRecord && otRecord.drive_folder_url) {
+        const folderIdMatch = otRecord.drive_folder_url.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+        const folderId = folderIdMatch ? folderIdMatch[1] : null;
+        if (folderId) {
+          console.log(`Subiendo archivo a la carpeta de Drive de la OT: ${folderId}`);
+          const driveFileUrl = await uploadFileToDrive(folderId, filename, filetype, buffer);
+          if (driveFileUrl) {
+            storedIdentifier = driveFileUrl;
+            uploadSuccess = true;
+            console.log(`Archivo subido con éxito a Google Drive: ${driveFileUrl}`);
+          }
+        }
       }
-      
-      const { data: urlData } = supabase.storage
-        .from('trimec-archivos')
-        .getPublicUrl(filenameUnique);
+    } catch (driveErr) {
+      console.error('Error al intentar subir archivo a Google Drive (fallando a almacenamiento por defecto):', driveErr.message || driveErr);
+    }
+
+    // 2. Si no se subió a Drive, usar el almacenamiento tradicional (Supabase o local) como fallback
+    if (!uploadSuccess) {
+      if (supabase) {
+        // Subir a Supabase Storage Bucket
+        const { data, error } = await supabase.storage
+          .from('trimec-archivos')
+          .upload(filenameUnique, buffer, {
+            contentType: filetype,
+            duplex: 'half'
+          });
+        if (error) {
+          throw error;
+        }
         
-      storedIdentifier = urlData.publicUrl;
-    } else {
-      const filePath = path.join(__dirname, 'uploads', filenameUnique);
-      if (!fs.existsSync(path.dirname(filePath))) {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const { data: urlData } = supabase.storage
+          .from('trimec-archivos')
+          .getPublicUrl(filenameUnique);
+          
+        storedIdentifier = urlData.publicUrl;
+      } else {
+        const filePath = path.join(__dirname, 'uploads', filenameUnique);
+        if (!fs.existsSync(path.dirname(filePath))) {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        }
+        fs.writeFileSync(filePath, buffer);
       }
-      fs.writeFileSync(filePath, buffer);
     }
     
     const now = new Date().toISOString().split('T')[0];
@@ -1152,7 +1176,7 @@ app.post('/api/ots/:otId/archivos', authenticate, async (req, res) => {
       [otId, filename, storedIdentifier, filetype, now]
     );
     
-    res.status(201).json({ message: 'Archivo subido con éxito', filenameUnique });
+    res.status(201).json({ message: 'Archivo subido con éxito', filenameUnique, drive: uploadSuccess });
   } catch (error) {
     console.error('Error al subir archivo:', error);
     res.status(500).json({ error: error.message });
