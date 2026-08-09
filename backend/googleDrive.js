@@ -12,15 +12,14 @@ export async function createDriveFolder(folderName) {
   }
 
   try {
-    // Formatear la private key para reemplazar saltos de línea escapados si se configuran en string plano
-    const formattedKey = privateKey.replace(/\\n/g, '\n');
+    // Formatear la private key para limpiar comillas externas y reemplazar saltos de línea escapados
+    const formattedKey = privateKey.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
 
-    const auth = new google.auth.JWT(
-      email,
-      null,
-      formattedKey,
-      ['https://www.googleapis.com/auth/drive']
-    );
+    const auth = new google.auth.JWT({
+      email: email,
+      key: formattedKey,
+      scopes: ['https://www.googleapis.com/auth/drive']
+    });
 
     const drive = google.drive({ version: 'v3', auth });
 
@@ -31,6 +30,7 @@ export async function createDriveFolder(folderName) {
     };
 
     const response = await drive.files.create({
+      auth,
       resource: fileMetadata,
       fields: 'id, webViewLink'
     });
@@ -39,7 +39,7 @@ export async function createDriveFolder(folderName) {
     
     return response.data.webViewLink;
   } catch (error) {
-    console.error('Error creating folder in Google Drive:', error);
+    console.error('Error creating folder in Google Drive (API Error):', error.message || error);
     return null;
   }
 }
