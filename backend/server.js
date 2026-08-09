@@ -466,6 +466,39 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
   }
 });
 
+app.post('/api/ots/:id/crear-carpeta-drive', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const ot = await get(`
+      SELECT o.*, c.razon_social 
+      FROM ordenes_trabajo o
+      JOIN clientes c ON o.cliente_id = c.id
+      WHERE o.id = ?
+    `, [id]);
+
+    if (!ot) {
+      return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
+    }
+
+    if (ot.drive_folder_url) {
+      return res.json({ drive_folder_url: ot.drive_folder_url, message: 'La carpeta ya existe' });
+    }
+
+    const folderName = `OT ${id} - ${ot.razon_social || ''}`.trim();
+    const driveFolderUrl = await createDriveFolder(folderName);
+
+    if (!driveFolderUrl) {
+      return res.status(500).json({ error: 'No se pudo crear la carpeta en Google Drive. Verifica que la carpeta raíz esté compartida con la cuenta de servicio y las credenciales del .env sean válidas.' });
+    }
+
+    await run('UPDATE ordenes_trabajo SET drive_folder_url = ? WHERE id = ?', [driveFolderUrl, id]);
+
+    res.json({ drive_folder_url: driveFolderUrl, message: 'Carpeta de Drive creada y vinculada con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   const body = req.body;

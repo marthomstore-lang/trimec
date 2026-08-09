@@ -240,6 +240,22 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [informeForm, setInformeForm] = useState({ antes_condicion: '', despues_tareas: '', recomendaciones: '', fotos_antes: '[]', fotos_despues: '[]', hora_inicio_ejecucion: '', hora_fin_ejecucion: '', tecnico_id: '' });
   const [showInformePreview, setShowInformePreview] = useState(false);
   const [travelList, setTravelList] = useState([]);
+  const [generatingDrive, setGeneratingDrive] = useState(false);
+
+  const handleGenerateDriveFolder = async () => {
+    setGeneratingDrive(true);
+    try {
+      const data = await api(`/ots/${otId}/crear-carpeta-drive`, {
+        method: 'POST'
+      });
+      showToast(data.message || 'Carpeta de Drive creada con éxito', 'success');
+      setOt(prev => ({ ...prev, drive_folder_url: data.drive_folder_url }));
+    } catch (err) {
+      showToast(err.message || 'Error al crear la carpeta en Google Drive', 'danger');
+    } finally {
+      setGeneratingDrive(false);
+    }
+  };
 
   const fetchOtDetail = async () => {
     setLoading(true);
@@ -1056,15 +1072,38 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
                     </p>
                   </div>
                 </div>
-                <a 
-                  href={ot.drive_folder_url || "https://drive.google.com/drive/folders/1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz?usp=sharing"} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4' }}
-                >
-                  {ot.drive_folder_url ? 'Abrir Carpeta ➡️' : 'Ir a Drive ➡️'}
-                </a>
+                {ot.drive_folder_url ? (
+                  <a 
+                    href={ot.drive_folder_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="btn btn-primary btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4' }}
+                  >
+                    Abrir Carpeta ➡️
+                  </a>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                    <a 
+                      href="https://drive.google.com/drive/folders/1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz?usp=sharing"
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="btn btn-secondary btn-sm"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.35rem 0.5rem' }}
+                      title="Abrir carpeta raíz general"
+                    >
+                      Raíz 📁
+                    </a>
+                    <button 
+                      onClick={handleGenerateDriveFolder}
+                      disabled={generatingDrive}
+                      className="btn btn-primary btn-sm"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4', fontSize: '0.75rem', padding: '0.35rem 0.5rem' }}
+                    >
+                      {generatingDrive ? 'Creando...' : '➕ Crear Carpeta'}
+                    </button>
+                  </div>
+                )}
               </div>
               
               <div style={{ marginBottom: '1.25rem' }}>
