@@ -287,6 +287,9 @@ app.delete('/api/trabajadores/:id', authenticate, checkRole(['admin']), async (r
 
 
 app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
+  const { prefijo } = req.query;
+  const prefixToUse = (prefijo || 'OT').trim().toUpperCase();
+
   try {
     const today = new Date();
     const dd = String(today.getDate()).padStart(2, '0');
@@ -294,16 +297,16 @@ app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
     const yy = String(today.getFullYear()).slice(-2);
     const datePrefix = `${dd}${mm}${yy}`; // Formato DDMMYY
 
-    const ots = await query(`SELECT id FROM ordenes_trabajo WHERE id LIKE '%${datePrefix}.%'`);
+    const ots = await query(`SELECT id FROM ordenes_trabajo`);
     
     let maxSeq = 0;
+    const regex = new RegExp(`${datePrefix}\\.(\\d+)`);
+    
     if (ots && ots.length > 0) {
       for (const ot of ots) {
-        const parts = ot.id.toString().split('-');
-        const suffix = parts[parts.length - 1]; // e.g. "260701.1"
-        const subparts = suffix.split('.');
-        if (subparts.length === 2 && subparts[0] === datePrefix) {
-          const seqVal = parseInt(subparts[1], 10);
+        const match = ot.id.toString().match(regex);
+        if (match) {
+          const seqVal = parseInt(match[1], 10);
           if (!isNaN(seqVal) && seqVal > maxSeq) {
             maxSeq = seqVal;
           }
@@ -311,10 +314,24 @@ app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
       }
     }
     
-    const nextSeq = maxSeq + 1;
-    const finalNumber = `${datePrefix}.${nextSeq}`; 
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `${datePrefix}.${nextSeq}`;
+    let proposedId = `${prefixToUse}-${finalNumber}`;
+
+    // Validar en bucle si el ID final ya existe (por si se generaron descalces manuales)
+    let exists = true;
+    while (exists) {
+      const existing = await get('SELECT id FROM ordenes_trabajo WHERE id = ?', [proposedId]);
+      if (existing) {
+        nextSeq++;
+        finalNumber = `${datePrefix}.${nextSeq}`;
+        proposedId = `${prefixToUse}-${finalNumber}`;
+      } else {
+        exists = false;
+      }
+    }
     
-    res.json({ siguiente_numero: finalNumber });
+    res.json({ siguiente_numero: finalNumber, id_propuesto: proposedId });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

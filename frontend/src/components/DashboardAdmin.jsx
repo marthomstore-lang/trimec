@@ -610,9 +610,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
         return;
       }
       try {
-        const { siguiente_numero } = await api('/ots/siguiente-numero');
-        const prefijo = selected.prefijo || 'OT';
-        setNewOt({ ...newOt, cliente_id: clientId, id: `${prefijo}-\\${siguiente_numero}`.replace('\\', '') });
+        const prefijo = (selected.prefijo || 'OT').trim();
+        const { id_propuesto } = await api(`/ots/siguiente-numero?prefijo=${encodeURIComponent(prefijo)}`);
+        setNewOt({ ...newOt, cliente_id: clientId, id: id_propuesto });
       } catch (err) {
         showToast('Error al obtener correlativo de OT', 'danger');
         setNewOt({ ...newOt, cliente_id: clientId, id: `${selected.prefijo || 'OT'}-` });
@@ -626,9 +626,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       const selected = clients.find(c => c.id === parseInt(newOt.cliente_id));
       if (selected) {
         try {
-          const { siguiente_numero } = await api('/ots/siguiente-numero');
-          const prefijo = selected.prefijo || 'OT';
-          setNewOt({ ...newOt, id: `${prefijo}-${siguiente_numero}` });
+          const prefijo = (selected.prefijo || 'OT').trim();
+          const { id_propuesto } = await api(`/ots/siguiente-numero?prefijo=${encodeURIComponent(prefijo)}`);
+          setNewOt({ ...newOt, id: id_propuesto });
         } catch (err) {
           showToast('Error al obtener correlativo de OT', 'danger');
         }
