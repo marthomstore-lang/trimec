@@ -214,6 +214,9 @@ export const initDb = async () => {
     await pgPool.query(`
       ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS tecnico_id INTEGER;
     `).catch(err => console.log('Error adding tecnico_id to postgres:', err.message));
+    await pgPool.query(`
+      ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS drive_folder_url VARCHAR(500);
+    `).catch(err => console.log('Error adding drive_folder_url to postgres:', err.message));
   }
 
   // Migraciones automáticas sólo en SQLite (en Supabase la BD se inicia de cero o vía script)
@@ -258,6 +261,10 @@ export const initDb = async () => {
         const hasFaena = otCols.some(c => c.name === 'faena');
         if (!hasFaena) {
           await run("ALTER TABLE ordenes_trabajo ADD COLUMN faena TEXT");
+        }
+        const hasDrive = otCols.some(c => c.name === 'drive_folder_url');
+        if (!hasDrive) {
+          await run("ALTER TABLE ordenes_trabajo ADD COLUMN drive_folder_url TEXT");
         }
       }
     } catch (e) { }
@@ -402,7 +409,8 @@ export const initDb = async () => {
       fecha_entrega TEXT,
       monto_neto_presupuesto REAL DEFAULT 0.0,
       hh_presupuestadas REAL DEFAULT 0.0,
-      fecha_proyectada_presupuesto TEXT
+      fecha_proyectada_presupuesto TEXT,
+      drive_folder_url TEXT
     )
   `));
 

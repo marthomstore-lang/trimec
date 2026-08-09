@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { get, run, query, initDb } from './db.js';
 import { generateBudgetPDF, generateTechnicalReportPDF } from './pdfGenerator.js';
 import { createClient } from '@supabase/supabase-js';
+import { createDriveFolder } from './googleDrive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -490,17 +491,25 @@ app.get('/api/ots/:id', authenticate, async (req, res) => {
 app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id, cliente_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto } = req.body;
   try {
+    // Obtener razón social del cliente para nombrar la carpeta de Drive
+    const clientRecord = await get('SELECT razon_social FROM clientes WHERE id = ?', [cliente_id]);
+    const clientName = clientRecord ? clientRecord.razon_social : '';
+    const folderName = `OT ${id} - ${clientName}`.trim();
+
+    // Crear carpeta en Google Drive (retorna la URL o null si no está configurada la cuenta de servicio)
+    const driveFolderUrl = await createDriveFolder(folderName);
+
     await run(
       `INSERT INTO ordenes_trabajo 
-      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0, fecha_proyectada_presupuesto || null]
+      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto, hh_presupuestadas, fecha_proyectada_presupuesto, drive_folder_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, cliente_id, req.user.id, detalle, estado || 'SP', es_emergencia ? 1 : 0, recargo_emergencia || 0.0, fecha_solicitud, fecha_aprobacion, fecha_entrega, monto_neto_presupuesto || 0.0, hh_presupuestadas || 0.0, fecha_proyectada_presupuesto || null, driveFolderUrl || null]
     );
 
     // Crear registro vacío de facturación
     await run('INSERT OR IGNORE INTO facturacion (ot_id) VALUES (?)', [id]);
 
-    res.status(201).json({ id, message: 'OT creada con éxito' });
+    res.status(201).json({ id, drive_folder_url: driveFolderUrl, message: 'OT creada con éxito y carpeta de Drive vinculada' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
