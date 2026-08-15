@@ -25,9 +25,11 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'trimec_secret_key_12345';
 
 // Limites de Frecuencia (Rate Limiting)
+const isProdEnv = process.env.NODE_ENV === 'production';
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: isProdEnv ? 15 : 1000,
   message: { message: 'Demasiados intentos de inicio de sesión. Por favor, reintente en 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -35,7 +37,7 @@ const loginLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  max: isProdEnv ? 500 : 5000,
   message: { message: 'Límite de solicitudes al servidor superado. Reintente en un momento.' },
   standardHeaders: true,
   legacyHeaders: false,

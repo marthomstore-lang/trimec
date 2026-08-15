@@ -16,10 +16,17 @@ const api = async (endpoint, options = {}) => {
   if (!response.ok) {
     let errMsg = 'Ha ocurrido un error en la solicitud';
     try {
-      const data = await response.json();
-      errMsg = data.message || data.error || errMsg;
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        errMsg = data.message || data.error || errMsg;
+      } catch (jsonErr) {
+        if (text && text.trim().length < 250) {
+          errMsg = text.trim();
+        }
+      }
     } catch (e) {
-      // Ignorar si no es JSON
+      // Ignorar si no se puede leer respuesta
     }
     throw new Error(errMsg);
   }
