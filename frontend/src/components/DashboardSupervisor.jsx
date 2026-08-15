@@ -444,7 +444,14 @@ const DashboardSupervisor = ({ onSelectOt, showToast }) => {
                     {filteredOts.map(ot => (
                       <div className="ot-card" key={ot.id}>
                         <div className="ot-card-header">
-                          <span className="ot-card-num">OT {ot.id}</span>
+                          <span 
+                            className="ot-card-num" 
+                            style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={() => onSelectOt(ot.id)}
+                            title="Ver detalles de la OT"
+                          >
+                            OT {ot.id}
+                          </span>
                           <span className={`badge badge-${ot.estado.toLowerCase().replace(' ', '')}`}>{ot.estado}</span>
                         </div>
                         <div className="ot-card-client">{ot.cliente_nombre}</div>

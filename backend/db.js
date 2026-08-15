@@ -41,11 +41,18 @@ if (isPostgres) {
   });
 }
 
-// Convertir placeholders ? de SQLite a $1, $2 de Postgres
+// Convertir placeholders ? de SQLite a $1, $2 de Postgres y traducir sintaxis incompatible
 function convertPlaceholders(sql) {
   if (!isPostgres) return sql;
   let index = 1;
-  return sql.replace(/\?/g, () => `$${index++}`);
+  let converted = sql.replace(/\?/g, () => `$${index++}`);
+  if (converted.toUpperCase().includes('INSERT OR IGNORE INTO')) {
+    converted = converted.replace(/INSERT OR IGNORE INTO/gi, 'INSERT INTO');
+    if (!converted.toUpperCase().includes('ON CONFLICT')) {
+      converted += ' ON CONFLICT DO NOTHING';
+    }
+  }
+  return converted;
 }
 
 // Traducir DDL para compatibilidad Postgres

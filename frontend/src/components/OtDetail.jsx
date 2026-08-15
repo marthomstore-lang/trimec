@@ -53,7 +53,7 @@ const DEFAULT_PLANTILLAS = [
   }
 ];
 
-const OtDetail = ({ otId, onBack, userRole, showToast }) => {
+const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
   const [ot, setOt] = useState(null);
   const [hhList, setHhList] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -61,6 +61,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Editing state for Admin/Supervisor to change details
   const [isEditing, setIsEditing] = useState(false);
@@ -651,11 +652,28 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
     window.open(`${BASE_URL}/ots/${otId}/informe-pdf?token=${token || ''}`, '_blank');
   };
 
+  const handleDeleteOt = () => {
+    requestConfirm(
+      'Eliminar Orden de Trabajo 🗑️',
+      `¿Estás seguro de que deseas eliminar permanentemente la OT "${otId}"? Esta acción borrará todas las HH, gastos, archivos e informes asociados.`,
+      async () => {
+        try {
+          await api(`/ots/${otId}`, { method: 'DELETE' });
+          showToast('Orden de Trabajo eliminada correctamente', 'success');
+          onBack();
+        } catch (err) {
+          showToast(err.message || 'Error al eliminar la Orden de Trabajo', 'danger');
+        }
+      }
+    );
+  };
+
   if (loading) return <p style={{ textAlign: 'center', padding: '3rem' }}>Cargando detalles de la OT {otId}...</p>;
   if (error) return <div style={{ padding: '2rem', textAlign: 'center' }}><p className="text-danger">{error}</p><button className="btn btn-secondary mt-4" onClick={onBack}>Volver</button></div>;
   if (!ot) return <p style={{ textAlign: 'center' }}>No se encontró la OT</p>;
 
   // Calculated values
+  const isOtLocked = ['LIQ', 'Liquidada', 'FAC', 'Facturada', 'CER', 'Cerrada'].includes(ot?.estado);
   const totalHh = ot.costo_hh || 0;
   const totalExpenses = ot.costo_gastos || 0;
   const totalCost = ot.costo_total || 0;
@@ -783,20 +801,53 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
             </button>
           )}
           {userRole === 'admin' && (
-            <button className="btn btn-secondary" onClick={() => setIsEditing(!isEditing)}>
-              {isEditing ? 'Cancelar Edición' : '⚙️ Editar OT'}
-            </button>
+            <>
+              <button className="btn btn-secondary" onClick={() => setIsEditing(!isEditing)}>
+                {isEditing ? 'Cancelar Edición' : '⚙️ Editar OT'}
+              </button>
+              <button className="btn btn-danger" style={{ backgroundColor: '#ef4444', borderColor: '#ef4444', color: '#fff' }} onClick={handleDeleteOt}>
+                🗑️ Eliminar OT
+              </button>
+            </>
           )}
           {['admin', 'supervisor'].includes(userRole) && (
             <button className="btn btn-primary" style={{ backgroundColor: '#10b981', borderColor: '#10b981' }} onClick={handleDownloadInformePdf}>
               📄 Descargar Informe Técnico PDF
             </button>
           )}
+          <button className="btn btn-secondary" style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', color: '#fff' }} onClick={() => setShowShareModal(true)}>
+            📲 Compartir OT
+          </button>
           <button className="btn btn-primary" onClick={handleDownloadPdf}>
             📄 Descargar Presupuesto PDF
           </button>
         </div>
       </div>
+
+      {/* BANNER DE OT BLOQUEADA (SI ESTÁ EN LIQUIDACIÓN, FACTURACIÓN O CERRADA) */}
+      {isOtLocked && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+          border: '1px solid #ef4444',
+          borderRadius: '8px',
+          padding: '0.85rem 1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          color: '#f8fafc'
+        }}>
+          <span style={{ fontSize: '1.8rem' }}>🔒</span>
+          <div>
+            <strong style={{ color: '#ef4444', fontSize: '1rem', display: 'block' }}>
+              Orden de Trabajo en estado {ot.estado} (Bloqueada para nuevos ingresos)
+            </strong>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+              Esta OT se encuentra en proceso de liquidación, facturación o cerrada. Se han deshabilitado nuevos ingresos de HH, kilometraje y compras para resguardar la integridad financiera.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Visual Pipeline Status (5 Etapas de Avance) */}
       <div className="panel-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem' }}>
@@ -1407,7 +1458,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
               <div className="panel-header">
                 <h3>Horas Hombre Imputadas</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {['admin', 'supervisor'].includes(userRole) && (
+                  {['admin', 'supervisor'].includes(userRole) && !isOtLocked && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setShowAddHhForm(!showAddHhForm)}>
                       {showAddHhForm ? 'Cancelar' : '➕ Imputar'}
                     </button>
@@ -1506,7 +1557,7 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
               <div className="panel-header">
                 <h3>Compras y Gastos Diarios</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {['admin', 'supervisor'].includes(userRole) && (
+                  {['admin', 'supervisor'].includes(userRole) && !isOtLocked && (
                     <>
                       <button className="btn btn-secondary btn-sm" onClick={() => { setShowAddExpenseForm(!showAddExpenseForm); setShowAddConsumoForm(false); }}>
                         {showAddExpenseForm ? 'Cancelar' : '➕ Registrar Gasto'}
@@ -2084,6 +2135,116 @@ const OtDetail = ({ otId, onBack, userRole, showToast }) => {
           </div>
         </div>
       )}
+
+      {/* MODAL COMPARTIR / ENVIAR OT COMPLETA */}
+      {showShareModal && (() => {
+        const fullOtSummaryText = [
+          `*TRIMEC SpA - FICHA DE ASIGNACIÓN DE TRABAJO*`,
+          `========================================`,
+          `📌 *OT N°:* ${ot.id}`,
+          `👤 *Cliente:* ${ot.cliente_nombre}${ot.cliente_rut ? ` (RUT: ${ot.cliente_rut})` : ''}`,
+          `📍 *Faena / Ubicación:* ${ot.faena || 'Taller Maestranza Campanario'}`,
+          `⚡ *Estado Actual:* ${ot.estado || 'En Proceso'}`,
+          `📅 *Fecha Solicitud:* ${ot.fecha_solicitud || 'N/A'}`,
+          `⏱️ *Fecha Compromiso Entrega:* ${ot.fecha_entrega || 'Por definir'}`,
+          `👷 *Horas Presupuestadas:* ${ot.hh_presupuestadas ? `${ot.hh_presupuestadas} HH` : 'Según requerimiento en terreno'}`,
+          `----------------------------------------`,
+          `🛠️ *DESCRIPCIÓN TÉCNICA DE LOS TRABAJOS:*\n${ot.detalle || 'Sin detalle especificado'}`,
+          `----------------------------------------`,
+          ot.notas_presupuesto ? `📝 *NOTAS E INSTRUCCIONES DE FAENA:*\n${ot.notas_presupuesto}\n----------------------------------------` : '',
+          `📲 *ENLACE DE REGISTRO DE TERRENO (Kilometraje, Combustible, Fotos e Insumos):*`,
+          `${window.location.origin}/?ot=${ot.id}&terreno=true`,
+          `========================================`
+        ].filter(Boolean).join('\n');
+
+        return (
+          <div className="modal-overlay" style={{ zIndex: 9999 }}>
+            <div className="modal-content" style={{ maxWidth: '640px', padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📲 Ficha Completa de OT - Operadores y Terreno
+                </h3>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowShareModal(false)}>✕</button>
+              </div>
+
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                A continuación se presenta la <strong>ficha técnica completa de la OT {ot.id}</strong>. Al enviar por WhatsApp o copiar, se incluirán todos los detalles del trabajo, cliente, faena, notas y el enlace directo para registrar gastos y kilometraje.
+              </p>
+
+              <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.5rem', color: 'var(--primary)' }}>
+                  📋 Resumen Ejecutivo Completo de la Orden de Trabajo:
+                </label>
+                <textarea 
+                  readOnly 
+                  rows="10" 
+                  className="form-control" 
+                  style={{ fontSize: '0.8rem', fontFamily: 'monospace', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}
+                  value={fullOtSummaryText}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {onOpenTerreno && (
+                  <button 
+                    type="button" 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setShowShareModal(false);
+                      onOpenTerreno(ot.id);
+                    }}
+                    style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
+                  >
+                    📱 Abrir Formulario de Terreno para esta OT
+                  </button>
+                )}
+
+                <a 
+                  href={`https://wa.me/?text=${encodeURIComponent(fullOtSummaryText)}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="btn btn-primary"
+                  style={{ backgroundColor: '#25D366', borderColor: '#25D366', color: '#fff', textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600 }}
+                >
+                  💬 Enviar Ficha Completa por WhatsApp
+                </a>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(fullOtSummaryText);
+                      showToast('📋 Ficha completa copiada al portapapeles', 'success');
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+                  >
+                    📋 Copiar Ficha Completa
+                  </button>
+
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/?ot=${ot.id}&terreno=true`);
+                      showToast('🔗 Enlace directo copiado al portapapeles', 'success');
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+                  >
+                    🔗 Copiar Solo Enlace
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '1.25rem', textAlign: 'right' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowShareModal(false)}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

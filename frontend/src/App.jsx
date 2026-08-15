@@ -5,11 +5,14 @@ import DashboardSupervisor from './components/DashboardSupervisor';
 import DashboardContador from './components/DashboardContador';
 import DashboardOperador from './components/DashboardOperador';
 import OtDetail from './components/OtDetail';
+import ModuloTerrenoOffline from './components/ModuloTerrenoOffline';
 import api from './utils/api';
 
 function App() {
   const [user, setUser] = useState(null);
   const [selectedOtId, setSelectedOtId] = useState(null);
+  const [showModuloTerreno, setShowModuloTerreno] = useState(false);
+  const [terrenoOtId, setTerrenoOtId] = useState('');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -26,6 +29,16 @@ function App() {
     if (token && savedUser) {
       setUser(JSON.parse(savedUser));
     }
+
+    // Detectar si se abrió enlace compartido de terreno (?ot=SER-545&terreno=true)
+    const params = new URLSearchParams(window.location.search);
+    const otParam = params.get('ot') || params.get('terreno_ot');
+    const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
+    if (otParam && isTerreno) {
+      setTerrenoOtId(otParam);
+      setShowModuloTerreno(true);
+    }
+
     setLoading(false);
   }, []);
 
@@ -38,6 +51,14 @@ function App() {
     localStorage.removeItem('trimec_user');
     setUser(null);
     setSelectedOtId(null);
+    setShowModuloTerreno(false);
+    setTerrenoOtId('');
+  };
+
+  const handleOpenTerrenoForOt = (otId) => {
+    setTerrenoOtId(otId);
+    setSelectedOtId(null);
+    setShowModuloTerreno(true);
   };
 
   if (loading) {
@@ -56,10 +77,17 @@ function App() {
     <div className="app-container">
       {/* HEADER NAV */}
       <nav className="main-nav">
-        <div className="nav-brand" style={{ cursor: 'pointer' }} onClick={() => setSelectedOtId(null)}>
+        <div className="nav-brand" style={{ cursor: 'pointer' }} onClick={() => { setSelectedOtId(null); setShowModuloTerreno(false); setTerrenoOtId(''); }}>
           TRIMEC ERP
         </div>
         <div className="nav-user">
+          <button 
+            className="btn btn-primary btn-sm" 
+            style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', padding: '0.3rem 0.6rem', fontSize: '0.85rem' }} 
+            onClick={() => { setSelectedOtId(null); setShowModuloTerreno(!showModuloTerreno); setTerrenoOtId(''); }}
+          >
+            {showModuloTerreno ? '📊 Ver Dashboard' : '📱 Terreno (Offline & Km)'}
+          </button>
           <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
             Conectado como: <strong>{user.nombre}</strong>
           </span>
@@ -73,11 +101,18 @@ function App() {
       </nav>
 
       {/* DASHBOARD OR DETAIL ROUTER */}
-      <main style={{ flex: 1 }}>
-        {selectedOtId !== null ? (
+      <main style={{ flex: 1, padding: '1.5rem 1rem' }}>
+        {showModuloTerreno ? (
+          <ModuloTerrenoOffline 
+            initialOtId={terrenoOtId}
+            onBack={() => { setShowModuloTerreno(false); setTerrenoOtId(''); }} 
+            showToast={showToast} 
+          />
+        ) : selectedOtId !== null ? (
           <OtDetail
             otId={selectedOtId}
             onBack={() => setSelectedOtId(null)}
+            onOpenTerreno={handleOpenTerrenoForOt}
             userRole={user.rol}
             showToast={showToast}
           />

@@ -79,6 +79,30 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openMenuOtId, setOpenMenuOtId] = useState(null);
+
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      if (!e.target.closest('.ot-menu-dropdown-container')) {
+        setOpenMenuOtId(null);
+      }
+    };
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, []);
+
+  const handleDeleteOt = async (otId) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente la OT "${otId}"? Esta acción borrará la OT y todos sus registros asociados.`)) {
+      return;
+    }
+    try {
+      await api(`/ots/${otId}`, { method: 'DELETE' });
+      showToast && showToast(`OT ${otId} eliminada con éxito`, 'success');
+      fetchData();
+    } catch (err) {
+      showToast && showToast(err.message || 'Error al eliminar la Orden de Trabajo', 'danger');
+    }
+  };
 
   const handleMoveStatus = async (otId, currentStatus, direction) => {
     let currentIdx = WORKFLOW_STAGES.findIndex(s => s.statuses.includes(currentStatus));
@@ -854,7 +878,13 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                     const sem = getOtSemaforo(ot);
                     return (
                       <tr key={ot.id}>
-                        <td style={{ fontWeight: 700, color: 'var(--primary)' }}>{ot.id}</td>
+                        <td 
+                          style={{ fontWeight: 700, color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline' }} 
+                          onClick={() => onSelectOt(ot.id)}
+                          title="Ver detalles de la OT"
+                        >
+                          {ot.id}
+                        </td>
                         <td style={{ fontWeight: 500 }}>{ot.cliente_nombre}</td>
                         <td style={{ maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {ot.es_emergencia === 1 && <span style={{ color: '#ef4444', fontWeight: 'bold', marginRight: '4px' }}>[URGENTE]</span>}
@@ -897,15 +927,110 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                           >
                             ▶️
                           </button>
-                          <button className="btn btn-secondary btn-sm" onClick={() => onSelectOt(ot.id)}>
-                            🔍 Gestionar
-                          </button>
-                          <button className="btn btn-primary btn-sm" style={{ padding: '0.2rem 0.4rem' }} title="Descargar Presupuesto PDF" onClick={() => {
-                            const token = localStorage.getItem('trimec_token');
-                            window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
-                          }}>
-                            📄 PDF
-                          </button>
+
+                          <div className="ot-menu-dropdown-container" style={{ position: 'relative', display: 'inline-block' }}>
+                            <button 
+                              className="btn btn-secondary btn-sm" 
+                              style={{ padding: '0.2rem 0.6rem', fontSize: '1.1rem', lineHeight: '1', cursor: 'pointer', fontWeight: 'bold' }} 
+                              title="Más opciones"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuOtId(openMenuOtId === ot.id ? null : ot.id);
+                              }}
+                            >
+                              ⋮
+                            </button>
+                            
+                            {openMenuOtId === ot.id && (
+                              <div style={{
+                                position: 'absolute',
+                                right: 0,
+                                top: '100%',
+                                marginTop: '0.25rem',
+                                backgroundColor: '#1e293b',
+                                border: '1px solid #334155',
+                                borderRadius: '6px',
+                                boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)',
+                                zIndex: 1000,
+                                minWidth: '130px',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column'
+                              }}>
+                                <button 
+                                  style={{
+                                    padding: '0.5rem 0.75rem',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#f8fafc',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  onClick={() => {
+                                    setOpenMenuOtId(null);
+                                    const token = localStorage.getItem('trimec_token');
+                                    window.open(`${BASE_URL}/ots/${ot.id}/pdf?token=${token || ''}`, '_blank');
+                                  }}
+                                >
+                                  📄 PDF
+                                </button>
+                                <button 
+                                  style={{
+                                    padding: '0.5rem 0.75rem',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#f8fafc',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  onClick={() => {
+                                    setOpenMenuOtId(null);
+                                    onSelectOt(ot.id);
+                                  }}
+                                >
+                                  🔍 Gestionar
+                                </button>
+                                <button 
+                                  style={{
+                                    padding: '0.5rem 0.75rem',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#ef4444',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    borderTop: '1px solid #334155',
+                                    transition: 'background 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#451a1a'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  onClick={() => {
+                                    setOpenMenuOtId(null);
+                                    handleDeleteOt(ot.id);
+                                  }}
+                                >
+                                  🗑️ Eliminar
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>

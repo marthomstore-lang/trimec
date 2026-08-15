@@ -231,7 +231,13 @@ const DashboardContador = ({ onSelectOt, showToast }) => {
                   <tbody>
                     {filteredBills.map((bill) => (
                       <tr key={bill.id}>
-                        <td style={{ fontWeight: 700, color: 'var(--primary)' }}>OT {bill.ot_id}</td>
+                        <td 
+                          style={{ fontWeight: 700, color: 'var(--primary)', cursor: 'pointer', textDecoration: 'underline' }}
+                          onClick={() => onSelectOt(bill.ot_id)}
+                          title="Ver detalles de la OT"
+                        >
+                          OT {bill.ot_id}
+                        </td>
                         <td style={{ fontWeight: 600 }}>{bill.cliente_nombre}</td>
                         <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bill.ot_detalle}</td>
                         <td className="text-right">${Math.round(bill.monto_neto_presupuesto).toLocaleString('es-CL')}</td>

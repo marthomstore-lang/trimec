@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
@@ -20,11 +21,54 @@ const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supaba
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = 'trimec_secret_key_12345';
+const JWT_SECRET = process.env.JWT_SECRET || 'trimec_secret_key_12345';
 
-// Middlewares
-app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Permitir payloads JSON más grandes para base64
+// Limites de Frecuencia (Rate Limiting)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 15, // máximo 15 intentos por IP
+  message: { message: 'Demasiados intentos de inicio de sesión. Por favor, reintente en 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  message: { message: 'Límite de solicitudes al servidor superado. Reintente en un momento.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Cabeceras de Seguridad HTTP (Security Headers)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// Configuración de CORS Seguro
+const isProd = process.env.NODE_ENV === 'production';
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:5000').split(',');
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || !isProd || allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.endsWith(o))) {
+      callback(null, true);
+    } else {
+      callback(new Error('Petición bloqueada por política de CORS.'));
+    }
+  },
+  credentials: true,
+}));
+
+app.use('/api/', apiLimiter);
+app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Asegurar existencia de carpeta uploads (sólo en desarrollo/local)
@@ -69,10 +113,14 @@ const checkRole = (roles) => {
 };
 
 // --- AUTH ROUTE ---
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Por favor, ingrese su correo electrónico y contraseña' });
+  }
+  const cleanEmail = email.trim().toLowerCase();
   try {
-    const user = await get('SELECT * FROM usuarios WHERE email = ?', [email]);
+    const user = await get('SELECT * FROM usuarios WHERE LOWER(email) = ?', [cleanEmail]);
     if (!user) {
       return res.status(400).json({ message: 'Usuario no encontrado' });
     }
@@ -507,9 +555,31 @@ app.post('/api/ots', authenticate, checkRole(['admin', 'supervisor']), async (re
     );
 
     // Crear registro vacío de facturación
-    await run('INSERT OR IGNORE INTO facturacion (ot_id) VALUES (?)', [id]);
+    await run('INSERT INTO facturacion (ot_id) VALUES (?) ON CONFLICT DO NOTHING', [id]);
 
     res.status(201).json({ id, drive_folder_url: driveFolderUrl, message: 'OT creada con éxito y carpeta de Drive vinculada' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/ots/:id', authenticate, checkRole(['admin']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const ot = await get('SELECT * FROM ordenes_trabajo WHERE id = ?', [id]);
+    if (!ot) {
+      return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
+    }
+
+    await run('DELETE FROM registro_hh WHERE ot_id = ?', [id]);
+    await run('DELETE FROM gastos_diarios WHERE ot_id = ?', [id]);
+    await run('DELETE FROM facturacion WHERE ot_id = ?', [id]);
+    await run('DELETE FROM archivos_ot WHERE ot_id = ?', [id]);
+    await run('DELETE FROM traslados_viajes WHERE ot_id = ?', [id]);
+    await run('DELETE FROM informes_tecnicos WHERE ot_id = ?', [id]);
+    await run('DELETE FROM ordenes_trabajo WHERE id = ?', [id]);
+
+    res.json({ message: 'Orden de Trabajo eliminada correctamente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -639,9 +709,25 @@ app.get('/api/hh/ot/:ot_id', authenticate, async (req, res) => {
   }
 });
 
+const checkOtNotLocked = async (otId) => {
+  if (!otId) return { locked: false };
+  const ot = await get('SELECT estado FROM ordenes_trabajo WHERE id = ?', [otId]);
+  if (!ot) return { locked: false };
+  const lockedStates = ['LIQ', 'Liquidada', 'FAC', 'Facturada', 'CER', 'Cerrada'];
+  if (lockedStates.includes(ot.estado)) {
+    return { locked: true, estado: ot.estado };
+  }
+  return { locked: false, estado: ot.estado };
+};
+
 app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
   try {
+    const lockCheck = await checkOtNotLocked(ot_id);
+    if (lockCheck.locked) {
+      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+    }
+
     const result = await run(
       'INSERT INTO registro_hh (ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [ot_id, trabajador_id, fecha, horas_normales || 0.0, horas_extra || 0.0, ubicacion || 'Taller', actividad]
@@ -707,6 +793,11 @@ app.get('/api/gastos/ot/:ot_id', authenticate, async (req, res) => {
 app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta } = req.body;
   try {
+    const lockCheck = await checkOtNotLocked(ot_id);
+    if (lockCheck.locked) {
+      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+    }
+
     const result = await run(
       'INSERT INTO gastos_diarios (ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [ot_id, fecha, clasificacion, detalle, cantidad || 1.0, valor_neto || 0.0, valor_iva || 0.0, valor_total || 0.0, foto_boleta || null]
@@ -780,6 +871,10 @@ app.post('/api/traslados', authenticate, checkRole(['admin', 'supervisor', 'oper
   } = req.body;
 
   try {
+    const lockCheck = await checkOtNotLocked(ot_id);
+    if (lockCheck.locked) {
+      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+    }
     const result = await run(`
       INSERT INTO traslados_viajes (
         ot_id, trabajador_id, fecha, patente_vehiculo, km_inicio, km_termino,
@@ -1584,7 +1679,7 @@ app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'superviso
 
 // Start Server (sólo en desarrollo)
 if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor local corriendo en http://localhost:${PORT}`);
   });
 }

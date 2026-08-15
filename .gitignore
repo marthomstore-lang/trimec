@@ -19,3 +19,10 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Temporales y scripts de scratch
+check_ots_local.js
+docx_content.txt
+read_docx.py
+scratch/
+task.md

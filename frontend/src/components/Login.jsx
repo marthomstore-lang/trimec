@@ -16,14 +16,14 @@ const Login = ({ onLoginSuccess }) => {
     if (!msg) return 'Error al iniciar sesión';
     const msgLower = msg.toLowerCase();
     
-    // Caso 1: Sin conexión a internet
+    // Caso 1: Error de conexión con el backend local o red
     if (
       msgLower.includes('enotfound') || 
       msgLower.includes('failed to fetch') || 
       msgLower.includes('fetch failed') || 
       msgLower.includes('network error')
     ) {
-      return 'No hay conexión a internet. Por favor, verifica tu red e inténtalo de nuevo.';
+      return 'No se pudo conectar con el servidor local (Backend). Asegúrate de que el servidor en el puerto 5000 esté en ejecución.';
     }
     
     // Caso 2: Error al conectar a la base de datos
