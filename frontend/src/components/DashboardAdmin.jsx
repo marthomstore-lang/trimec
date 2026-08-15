@@ -9,7 +9,7 @@ const WORKFLOW_STAGES = [
   { id: '5', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada', 'Cerradas'] }
 ];
 
-export const getOtSemaforo = (ot) => {
+const getOtSemaforo = (ot) => {
   if (!ot) return { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '⚪ N/A', code: 'INDET' };
   const isSp = ot.estado === 'SP';
   const today = new Date();

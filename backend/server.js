@@ -1629,6 +1629,14 @@ app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'superviso
   }
 });
 
+// Middleware de Manejo de Errores Global en JSON
+app.use((err, req, res, next) => {
+  console.error('Unhandled API Error:', err);
+  res.status(err.status || 500).json({
+    message: err.message || 'Error interno en el servidor. Por favor intente nuevamente.'
+  });
+});
+
 // Start Server (sólo en desarrollo)
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
