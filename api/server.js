@@ -60,9 +60,24 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,ht
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || !isProd || allowedOrigins.includes(origin) || allowedOrigins.some(o => origin.endsWith(o))) {
+    // Permitir solicitudes sin origen (p. ej. peticiones servidor a servidor o curl/node)
+    if (!origin) return callback(null, true);
+    
+    // En entorno de desarrollo local, permitir todos los orígenes locales y LAN
+    if (!isProd) return callback(null, true);
+
+    // En producción, verificar orígenes permitidos y dominios autorizados
+    const isAllowed = 
+      allowedOrigins.includes(origin) ||
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1') ||
+      origin.startsWith('http://192.168.') ||
+      origin.endsWith('.vercel.app');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
+      console.warn(`CORS bloqueado para origen: ${origin}`);
       callback(new Error('Petición bloqueada por política de CORS.'));
     }
   },
