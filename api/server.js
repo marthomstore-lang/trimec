@@ -116,18 +116,18 @@ const checkRole = (roles) => {
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ message: 'Por favor, ingrese su correo electrónico y contraseña' });
+    return res.status(400).json({ message: 'Por favor, ingresa tu correo electrónico y contraseña' });
   }
   const cleanEmail = email.trim().toLowerCase();
   try {
     const user = await get('SELECT * FROM usuarios WHERE LOWER(email) = ?', [cleanEmail]);
     if (!user) {
-      return res.status(400).json({ message: 'Usuario no encontrado' });
+      return res.status(400).json({ message: `El correo '${cleanEmail}' no se encuentra registrado. Utiliza una cuenta autorizada (@trimec.cl).` });
     }
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
-      return res.status(400).json({ message: 'Contraseña incorrecta' });
+      return res.status(400).json({ message: 'La contraseña ingresada es incorrecta.' });
     }
 
     const token = jwt.sign({ id: user.id, nombre: user.nombre, email: user.email, rol: user.rol }, JWT_SECRET, { expiresIn: '8h' });

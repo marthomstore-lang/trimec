@@ -61,6 +61,8 @@ const Login = ({ onLoginSuccess }) => {
   };
 
   const handleQuickLogin = async (userEmail) => {
+    setEmail(userEmail);
+    setPassword('trimec123');
     setError('');
     setLoading(true);
     try {
@@ -99,7 +101,7 @@ const Login = ({ onLoginSuccess }) => {
               type="email"
               id="email"
               className="form-control"
-              placeholder="correo@trimec.cl"
+              placeholder="Ej: angelo@trimec.cl"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
