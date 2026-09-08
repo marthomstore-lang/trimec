@@ -78,6 +78,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [clients, setClients] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [openMenuOtId, setOpenMenuOtId] = useState(null);
   const [downloadingStockPdf, setDownloadingStockPdf] = useState(false);
 
