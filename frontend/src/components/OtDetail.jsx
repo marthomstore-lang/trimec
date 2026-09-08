@@ -673,7 +673,9 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
   if (!ot) return <p style={{ textAlign: 'center' }}>No se encontró la OT</p>;
 
   // Calculated values
-  const isOtLocked = ['LIQ', 'Liquidada', 'FAC', 'Facturada', 'CER', 'Cerrada'].includes(ot?.estado);
+  const isOtLocked = ['Liquidar', 'LIQ', 'Liquidada', 'Facturar', 'FAC', 'Facturada', 'CER', 'Cerrada', 'Cerradas', 'Terminada'].includes(ot?.estado);
+  const isLockedForUser = isOtLocked && userRole !== 'admin';
+  const canEditOtData = ['admin', 'supervisor'].includes(userRole) && (!isOtLocked || userRole === 'admin');
   const totalHh = ot.costo_hh || 0;
   const totalExpenses = ot.costo_gastos || 0;
   const totalCost = ot.costo_total || 0;
@@ -690,9 +692,9 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
   const STAGES_LIST = [
     { id: 'SP', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
     { id: 'En Proceso', name: '2. En Ejecución / OT', color: '#8b5cf6', statuses: ['Presupuestada', 'Aprobada', 'En Proceso'] },
-    { id: 'Liquidada', name: '3. Liquidar', color: '#06b6d4', statuses: ['Terminada', 'Liquidada'] },
-    { id: 'Facturada', name: '4. Facturar', color: '#10b981', statuses: ['Facturada'] },
-    { id: 'Cerrada', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada'] }
+    { id: 'Liquidar', name: '3. Liquidar', color: '#06b6d4', statuses: ['Terminada', 'Liquidada', 'Liquidar', 'LIQ'] },
+    { id: 'Facturar', name: '4. Facturar', color: '#10b981', statuses: ['Facturar', 'FAC', 'Facturada'] },
+    { id: 'Cerrada', name: '5. Cerradas', color: '#64748b', statuses: ['Cerrada', 'CER', 'Cerradas'] }
   ];
 
   const currentStageIndex = STAGES_LIST.findIndex(s => s.statuses.includes(ot.estado));
@@ -825,7 +827,8 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
       </div>
 
       {/* BANNER DE OT BLOQUEADA (SI ESTÁ EN LIQUIDACIÓN, FACTURACIÓN O CERRADA) */}
-      {isOtLocked && (
+      {/* BANNER DE OT BLOQUEADA O MODO ADMIN */}
+      {isLockedForUser && (
         <div style={{
           backgroundColor: 'rgba(239, 68, 68, 0.15)',
           border: '1px solid #ef4444',
@@ -840,10 +843,34 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
           <span style={{ fontSize: '1.8rem' }}>🔒</span>
           <div>
             <strong style={{ color: '#ef4444', fontSize: '1rem', display: 'block' }}>
-              Orden de Trabajo en estado {ot.estado} (Bloqueada para nuevos ingresos)
+              Orden de Trabajo en etapa '{ot.estado}' (Bloqueada para nuevos ingresos)
             </strong>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              Esta OT se encuentra en proceso de liquidación, facturación o cerrada. Se han deshabilitado nuevos ingresos de HH, kilometraje y compras para resguardar la integridad financiera.
+              Esta OT se encuentra en proceso de liquidación, facturación o cierre. Solo el Administrador puede modificar datos, ingresar registros o volver atrás de estado.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isOtLocked && userRole === 'admin' && (
+        <div style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.15)',
+          border: '1px solid #3b82f6',
+          borderRadius: '8px',
+          padding: '0.85rem 1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          color: '#f8fafc'
+        }}>
+          <span style={{ fontSize: '1.8rem' }}>🔓</span>
+          <div>
+            <strong style={{ color: '#60a5fa', fontSize: '1rem', display: 'block' }}>
+              Modo Administrador — OT en etapa '{ot.estado}' (Bloqueada para otros perfiles)
+            </strong>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+              Como Administrador tienes permisos exclusivos para ingresar o corregir HH, compras, traslados, y avanzar o volver atrás de estado según corresponda.
             </div>
           </div>
         </div>
@@ -858,6 +885,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
           {STAGES_LIST.map((stage, i) => {
             const isActive = currentStageIndex >= i;
             const isCurrent = currentStageIndex === i;
+            const canClickStage = userRole === 'admin' || (userRole === 'supervisor' && !isOtLocked);
             return (
               <div 
                 key={stage.id} 
@@ -868,9 +896,14 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                   zIndex: 2, 
                   flex: 1, 
                   minWidth: '100px', 
-                  cursor: ['admin', 'supervisor'].includes(userRole) ? 'pointer' : 'default' 
+                  cursor: canClickStage ? 'pointer' : 'not-allowed',
+                  opacity: canClickStage ? 1 : 0.7
                 }} 
                 onClick={() => {
+                  if (isLockedForUser) {
+                    showToast(`La OT está en etapa '${ot.estado}' y se encuentra bloqueada. Solo el Administrador puede cambiar el estado o volver atrás.`, 'danger');
+                    return;
+                  }
                   if (['admin', 'supervisor'].includes(userRole)) {
                     handleStatusChange(stage.id);
                   } else {
@@ -1458,7 +1491,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
               <div className="panel-header">
                 <h3>Horas Hombre Imputadas</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {['admin', 'supervisor'].includes(userRole) && !isOtLocked && (
+                  {canEditOtData && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setShowAddHhForm(!showAddHhForm)}>
                       {showAddHhForm ? 'Cancelar' : '➕ Imputar'}
                     </button>
@@ -1483,30 +1516,23 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                       <input type="date" className="form-control" value={newHh.fecha} onChange={(e) => setNewHh({ ...newHh, fecha: e.target.value })} required />
                     </div>
                   </div>
-                  <div className="flex-row-gap" style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ width: '90px' }}>
-                      <label style={{ fontSize: '0.75rem' }}>Hrs Norm.</label>
-                      <input type="number" step="0.5" className="form-control" value={newHh.horas_normales} onChange={(e) => setNewHh({ ...newHh, horas_normales: e.target.value })} required />
-                    </div>
-                    <div className="form-group" style={{ width: '90px' }}>
-                      <label style={{ fontSize: '0.75rem' }}>Hrs Extra</label>
-                      <input type="number" step="0.5" className="form-control" value={newHh.horas_extra} onChange={(e) => setNewHh({ ...newHh, horas_extra: e.target.value })} required />
-                    </div>
-                    <div className="form-group flex-grow" style={{ minWidth: '100px' }}>
-                      <label style={{ fontSize: '0.75rem' }}>Ubicación</label>
-                      <select className="form-control" value={newHh.ubicacion} onChange={(e) => setNewHh({ ...newHh, ubicacion: e.target.value })}>
-                        <option value="Taller">Taller</option>
-                        <option value="Terreno">Terreno</option>
-                      </select>
-                    </div>
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.75rem' }}>Actividad / Tarea Realizada</label>
+                    <input type="text" className="form-control" placeholder="Ej: Torneado de bujes, soldadura de soporte..." value={newHh.actividad} onChange={(e) => setNewHh({ ...newHh, actividad: e.target.value })} required />
                   </div>
-                  <div className="form-group" style={{ marginBottom: '1rem' }}>
-                    <label style={{ fontSize: '0.75rem' }}>Actividad / Tareas Realizadas</label>
-                    <input type="text" className="form-control" placeholder="Ej: Fabricación de soporte..." value={newHh.actividad} onChange={(e) => setNewHh({ ...newHh, actividad: e.target.value })} required />
+                  <div className="flex-row-gap" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                    <div className="form-group flex-grow">
+                      <label style={{ fontSize: '0.75rem' }}>Horas Normales</label>
+                      <input type="number" step="0.5" className="form-control" value={newHh.horas_normales} onChange={(e) => setNewHh({ ...newHh, horas_normales: parseFloat(e.target.value) || 0 })} required />
+                    </div>
+                    <div className="form-group flex-grow">
+                      <label style={{ fontSize: '0.75rem' }}>Horas Extra</label>
+                      <input type="number" step="0.5" className="form-control" value={newHh.horas_extra} onChange={(e) => setNewHh({ ...newHh, horas_extra: parseFloat(e.target.value) || 0 })} required />
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAddHhForm(false)}>Cancelar</button>
-                    <button type="submit" className="btn btn-primary btn-sm">Imputar HH</button>
+                    <button type="submit" className="btn btn-primary btn-sm">Guardar Horas</button>
                   </div>
                 </form>
               )}
@@ -1519,7 +1545,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                       <th>Trabajador</th>
                       <th>Horas</th>
                       <th>Costo</th>
-                      {['admin', 'supervisor'].includes(userRole) && <th>Acción</th>}
+                      {canEditOtData && <th>Acción</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1532,7 +1558,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                         </td>
                         <td>N:{hh.horas_normales}h / E:{hh.horas_extra}h</td>
                         <td className="text-right" style={{ fontWeight: 600 }}>${Math.round(hh.costo_calculado).toLocaleString('es-CL')}</td>
-                        {['admin', 'supervisor'].includes(userRole) && (
+                        {canEditOtData && (
                           <td>
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                               <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingHh({ ...hh })}>✏️</button>
@@ -1544,7 +1570,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                     ))}
                     {hhList.length === 0 && (
                       <tr>
-                        <td colSpan={['admin', 'supervisor'].includes(userRole) ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin horas imputadas en esta OT.</td>
+                        <td colSpan={canEditOtData ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin horas imputadas en esta OT.</td>
                       </tr>
                     )}
                   </tbody>
@@ -1557,7 +1583,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
               <div className="panel-header">
                 <h3>Compras y Gastos Diarios</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {['admin', 'supervisor'].includes(userRole) && !isOtLocked && (
+                  {canEditOtData && (
                     <>
                       <button className="btn btn-secondary btn-sm" onClick={() => { setShowAddExpenseForm(!showAddExpenseForm); setShowAddConsumoForm(false); }}>
                         {showAddExpenseForm ? 'Cancelar' : '➕ Registrar Gasto'}
@@ -1656,7 +1682,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                       <th>Item</th>
                       <th>Neto</th>
                       <th>Total</th>
-                      {['admin', 'supervisor'].includes(userRole) && <th>Acción</th>}
+                      {canEditOtData && <th>Acción</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1669,7 +1695,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                         </td>
                         <td className="text-right">${Math.round(exp.valor_neto).toLocaleString('es-CL')}</td>
                         <td className="text-right" style={{ fontWeight: 600 }}>${Math.round(exp.valor_total).toLocaleString('es-CL')}</td>
-                        {['admin', 'supervisor'].includes(userRole) && (
+                        {canEditOtData && (
                           <td>
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                               <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.4rem' }} onClick={() => setEditingExpense({ ...exp })}>✏️</button>
@@ -1681,7 +1707,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                     ))}
                     {expenses.length === 0 && (
                       <tr>
-                        <td colSpan={['admin', 'supervisor'].includes(userRole) ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin compras registradas para esta OT.</td>
+                        <td colSpan={canEditOtData ? "5" : "4"} style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Sin compras registradas para esta OT.</td>
                       </tr>
                     )}
                   </tbody>

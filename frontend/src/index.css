@@ -917,3 +917,87 @@ tr:hover td {
     font-size: 0.65rem !important;
   }
 }
+
+/* ==========================================================================
+   Print / Export Styles (Fondo Blanco estilo Presupuesto TRIMEC SpA)
+   ========================================================================== */
+@media print {
+  @page {
+    margin: 1.2cm;
+    size: letter;
+  }
+
+  *, *::before, *::after {
+    background: transparent !important;
+    color: #1e293b !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html, body, #root, .app-container {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    min-height: auto !important;
+  }
+
+  /* Ocultar elementos interactivos y de navegación */
+  .main-nav,
+  .tab-bar,
+  .btn,
+  .search-container,
+  .search-control,
+  .modal-overlay,
+  .toast-container,
+  .dashboard-title-bar button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Paneles con fondo blanco y bordes limpios */
+  .panel-card,
+  .dashboard-layout,
+  .table-container {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    color: #1e293b !important;
+    margin-bottom: 1.5rem !important;
+    padding: 1rem !important;
+  }
+
+  /* Tablas con formato limpio y formal */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    background: #ffffff !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    border-bottom: 2px solid #94a3b8 !important;
+    padding: 0.5rem !important;
+    text-align: left !important;
+  }
+
+  td {
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #334155 !important;
+    padding: 0.5rem !important;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: #0f172a !important;
+  }
+
+  .badge {
+    border: 1px solid #cbd5e1 !important;
+    background: #f8fafc !important;
+    color: #1e293b !important;
+  }
+}

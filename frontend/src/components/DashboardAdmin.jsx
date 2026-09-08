@@ -1204,7 +1204,18 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       </span>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button 
+                      className="btn btn-secondary btn-sm" 
+                      style={{ background: '#0284c7', borderColor: '#0284c7', color: '#fff' }} 
+                      onClick={() => {
+                        const token = localStorage.getItem('trimec_token');
+                        const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+                        window.open(`${BASE_URL}/inventario/pdf?token=${token || ''}`, '_blank');
+                      }}
+                    >
+                      📄 Descargar PDF Stock
+                    </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', old_sku: '', descripcion: '', proveedor: '', stock: 0, stock_minimo: 10, ubicacion: '', valor_unitario: 0, isEditing: false }); setShowItemModal(true); }}>
                       + Nuevo Artículo
                     </button>

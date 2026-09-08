@@ -458,7 +458,8 @@ export const initDb = async () => {
       nro_factura TEXT,
       fecha_factura TEXT,
       estado_pago TEXT NOT NULL DEFAULT 'Pendiente' CHECK(estado_pago IN ('Pendiente', 'Pagado', 'Anulado')),
-      fecha_vencimiento TEXT
+      fecha_vencimiento TEXT,
+      fecha_pago TEXT
     )
   `));
 
@@ -645,6 +646,10 @@ export const initDb = async () => {
 
   try {
     await run('ALTER TABLE inventario ADD COLUMN IF NOT EXISTS stock_minimo REAL DEFAULT 10.0');
+  } catch (e) {}
+
+  try {
+    await run('ALTER TABLE facturacion ADD COLUMN IF NOT EXISTS fecha_pago TEXT');
   } catch (e) {}
 };
 

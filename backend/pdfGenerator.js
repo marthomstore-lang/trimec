@@ -593,3 +593,218 @@ export const generateTechnicalReportPDF = (ot, client, report, { travelList = []
 
   doc.end();
 };
+
+export const generateBodegaStockPDF = (items = [], res) => {
+  const doc = new PDFDocument({ margin: 30, size: 'LETTER', autoFirstPage: true });
+  doc.pipe(res);
+
+  const black = '#000000';
+  const headerBg = '#EAEAEA';
+  const borderGray = '#666666';
+  const alertRed = '#b91c1c';
+
+  let currentY = 25;
+
+  const checkPageOverflow = (needed = 20) => {
+    if (currentY + needed > 700) {
+      doc.addPage();
+      currentY = 40;
+      return true;
+    }
+    return false;
+  };
+
+  // --- HEADER ---
+  doc.fillColor('#003366').fontSize(18).text('TRIMEC SpA', 40, currentY, { bold: true });
+  doc.fontSize(6).fillColor(black).text('INGENIERIA MECANICA - MANTENIMIENTO INDUSTRIAL', 40, currentY + 20);
+  doc.fontSize(7).text('RUT: 77.546.806-8 | Chillán, Chile', 40, currentY + 28);
+
+  doc.fillColor(black).fontSize(14).text('INFORME DE STOCK EN BODEGA', 230, currentY, { bold: true });
+  const fechaHoy = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  doc.fontSize(8).text(`Fecha de Emisión: ${fechaHoy}`, 230, currentY + 18);
+  doc.fontSize(8).text(`Total de Artículos Registrados: ${items.length}`, 230, currentY + 29);
+
+  currentY = 75;
+  doc.moveTo(40, currentY).lineTo(570, currentY).strokeColor(borderGray).lineWidth(0.8).stroke();
+  currentY += 10;
+
+  // --- TABLA DE INVENTARIO ---
+  const drawTableHeader = () => {
+    doc.rect(40, currentY, 530, 16).fill(headerBg);
+    doc.strokeColor(borderGray).lineWidth(0.5).rect(40, currentY, 530, 16).stroke();
+    doc.fillColor(black).fontSize(7.5);
+    doc.text('SKU', 45, currentY + 4, { width: 60, bold: true });
+    doc.text('DESCRIPCIÓN', 110, currentY + 4, { width: 140, bold: true });
+    doc.text('FAMILIA', 255, currentY + 4, { width: 65, bold: true });
+    doc.text('UBICACIÓN', 325, currentY + 4, { width: 60, bold: true });
+    doc.text('STOCK', 390, currentY + 4, { width: 45, align: 'right', bold: true });
+    doc.text('MIN', 440, currentY + 4, { width: 30, align: 'right', bold: true });
+    doc.text('VALOR UNIT.', 475, currentY + 4, { width: 45, align: 'right', bold: true });
+    doc.text('TOTAL VALOR', 525, currentY + 4, { width: 40, align: 'right', bold: true });
+    currentY += 16;
+  };
+
+  drawTableHeader();
+
+  let totalValorizado = 0;
+  let itemsCriticos = 0;
+
+  items.forEach((item, index) => {
+    if (checkPageOverflow(18)) {
+      drawTableHeader();
+    }
+
+    const stockNum = parseFloat(item.stock) || 0;
+    const stockMin = parseFloat(item.stock_minimo) || 10;
+    const valorUnit = parseFloat(item.valor_unitario) || 0;
+    const itemTotal = stockNum * valorUnit;
+    totalValorizado += itemTotal;
+
+    const isCritico = stockNum <= stockMin;
+    if (isCritico) itemsCriticos++;
+
+    if (isCritico) {
+      doc.rect(40, currentY, 530, 15).fill('#FEE2E2');
+    } else if (index % 2 === 1) {
+      doc.rect(40, currentY, 530, 15).fill('#F8FAFC');
+    }
+
+    doc.strokeColor('#E2E8F0').lineWidth(0.4).rect(40, currentY, 530, 15).stroke();
+
+    doc.fillColor(isCritico ? alertRed : black).fontSize(7);
+    doc.text(item.sku || '-', 45, currentY + 4, { width: 60, bold: isCritico });
+    doc.text(item.descripcion || '-', 110, currentY + 4, { width: 140, ellipsis: true });
+    doc.text(item.familia || 'General', 255, currentY + 4, { width: 65, ellipsis: true });
+    doc.text(item.ubicacion || 'Bodega', 325, currentY + 4, { width: 60, ellipsis: true });
+    doc.text(`${stockNum} ${item.unidad_medida || 'u'}`, 390, currentY + 4, { width: 45, align: 'right', bold: isCritico });
+    doc.text(`${stockMin}`, 440, currentY + 4, { width: 30, align: 'right' });
+    doc.text(`$${Math.round(valorUnit).toLocaleString('es-CL')}`, 475, currentY + 4, { width: 45, align: 'right' });
+    doc.text(`$${Math.round(itemTotal).toLocaleString('es-CL')}`, 525, currentY + 4, { width: 40, align: 'right', bold: true });
+
+    currentY += 15;
+  });
+
+  // --- TOTALES Y RESUMEN ---
+  currentY += 10;
+  checkPageOverflow(80);
+
+  doc.rect(40, currentY, 530, 45).strokeColor(borderGray).lineWidth(0.8).stroke();
+  doc.rect(40, currentY, 530, 14).fill(headerBg);
+  doc.fillColor(black).fontSize(8).text('RESUMEN DE BODEGA Y VALORIZACIÓN', 45, currentY + 3, { bold: true });
+
+  const rY = currentY + 18;
+  doc.fontSize(8);
+  doc.text(`Total Artículos: ${items.length}`, 50, rY);
+  doc.fillColor(itemsCriticos > 0 ? alertRed : black).text(`Artículos con Stock Crítico: ${itemsCriticos}`, 180, rY, { bold: itemsCriticos > 0 });
+  doc.fillColor(black).text(`Valor Total Inventario: $${Math.round(totalValorizado).toLocaleString('es-CL')}`, 340, rY, { bold: true });
+
+  // Firma
+  currentY += 60;
+  checkPageOverflow(60);
+  doc.strokeColor('blue').lineWidth(1.2);
+  doc.moveTo(430, currentY + 15).quadraticCurveTo(460, currentY - 5, 480, currentY + 20).stroke();
+  doc.moveTo(450, currentY + 8).quadraticCurveTo(470, currentY + 25, 500, currentY + 5).stroke();
+
+  doc.fillColor(black).fontSize(8)
+    .text('Control de Bodega y Abastecimiento', 410, currentY + 25, { align: 'center', width: 140, bold: true })
+    .fontSize(7)
+    .text('TRIMEC SpA', 410, currentY + 35, { align: 'center', width: 140 });
+
+  doc.end();
+};
+
+export const generateFlujoCajaPDF = (cashFlow = [], proyecciones = [], res) => {
+  const doc = new PDFDocument({ margin: 30, size: 'LETTER', autoFirstPage: true });
+  doc.pipe(res);
+
+  const black = '#000000';
+  const headerBg = '#EAEAEA';
+  const borderGray = '#666666';
+
+  let currentY = 25;
+
+  // Header
+  doc.fillColor('#003366').fontSize(18).text('TRIMEC SpA', 40, currentY, { bold: true });
+  doc.fontSize(6).fillColor(black).text('INGENIERIA MECANICA - MANTENIMIENTO INDUSTRIAL', 40, currentY + 20);
+  doc.fontSize(7).text('RUT: 77.546.806-8 | Chillán, Chile', 40, currentY + 28);
+
+  doc.fillColor(black).fontSize(14).text('REPORTE DE FLUJO DE CAJA Y FINANZAS', 210, currentY, { bold: true });
+  const fechaHoy = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  doc.fontSize(8).text(`Fecha de Emisión: ${fechaHoy}`, 210, currentY + 18);
+
+  currentY = 70;
+  doc.moveTo(40, currentY).lineTo(570, currentY).strokeColor(borderGray).lineWidth(0.8).stroke();
+  currentY += 15;
+
+  // Tabla Flujo Real
+  doc.fillColor(black).fontSize(9.5).text('HISTORIAL DE FLUJO DE CAJA MENSUAL (REAL COBRADO Y PAGADO)', 40, currentY, { bold: true });
+  currentY += 15;
+
+  doc.rect(40, currentY, 530, 16).fill(headerBg);
+  doc.strokeColor(borderGray).lineWidth(0.5).rect(40, currentY, 530, 16).stroke();
+  doc.fillColor(black).fontSize(8);
+  doc.text('MES', 50, currentY + 4, { width: 80, bold: true });
+  doc.text('INGRESOS COBRADOS (NETO)', 140, currentY + 4, { width: 130, align: 'right', bold: true });
+  doc.text('EGRESOS TOTALES', 290, currentY + 4, { width: 120, align: 'right', bold: true });
+  doc.text('SALDO NETO', 430, currentY + 4, { width: 125, align: 'right', bold: true });
+  currentY += 16;
+
+  let totalIngresos = 0;
+  let totalEgresos = 0;
+
+  cashFlow.forEach((row, idx) => {
+    const ing = parseFloat(row.ingresos) || 0;
+    const egr = parseFloat(row.egresos) || 0;
+    const saldo = ing - egr;
+    totalIngresos += ing;
+    totalEgresos += egr;
+
+    if (idx % 2 === 1) doc.rect(40, currentY, 530, 16).fill('#F8FAFC');
+    doc.strokeColor('#E2E8F0').lineWidth(0.4).rect(40, currentY, 530, 16).stroke();
+
+    doc.fillColor(black).fontSize(7.5);
+    doc.text(row.mes.toUpperCase(), 50, currentY + 4, { width: 80, bold: true });
+    doc.fillColor('#059669').text(`$${Math.round(ing).toLocaleString('es-CL')}`, 140, currentY + 4, { width: 130, align: 'right' });
+    doc.fillColor('#dc2626').text(`$${Math.round(egr).toLocaleString('es-CL')}`, 290, currentY + 4, { width: 120, align: 'right' });
+    doc.fillColor(saldo >= 0 ? '#059669' : '#dc2626').text(`$${Math.round(saldo).toLocaleString('es-CL')}`, 430, currentY + 4, { width: 125, align: 'right', bold: true });
+    currentY += 16;
+  });
+
+  // Fila Total
+  const totalSaldo = totalIngresos - totalEgresos;
+  doc.rect(40, currentY, 530, 18).fill('#E2E8F0');
+  doc.strokeColor(borderGray).lineWidth(0.8).rect(40, currentY, 530, 18).stroke();
+  doc.fillColor(black).fontSize(8);
+  doc.text('TOTAL CONSOLIDADO', 50, currentY + 5, { width: 80, bold: true });
+  doc.fillColor('#059669').text(`$${Math.round(totalIngresos).toLocaleString('es-CL')}`, 140, currentY + 5, { width: 130, align: 'right', bold: true });
+  doc.fillColor('#dc2626').text(`$${Math.round(totalEgresos).toLocaleString('es-CL')}`, 290, currentY + 5, { width: 120, align: 'right', bold: true });
+  doc.fillColor(totalSaldo >= 0 ? '#059669' : '#dc2626').text(`$${Math.round(totalSaldo).toLocaleString('es-CL')}`, 430, currentY + 5, { width: 125, align: 'right', bold: true });
+  currentY += 30;
+
+  // Proyecciones
+  if (proyecciones.length > 0) {
+    doc.fillColor(black).fontSize(9.5).text('PROYECCIONES: DINEROS PENDIENTES DE COBRO Y PAGOS POR EJECUTAR', 40, currentY, { bold: true });
+    currentY += 15;
+
+    doc.rect(40, currentY, 530, 16).fill(headerBg);
+    doc.strokeColor(borderGray).lineWidth(0.5).rect(40, currentY, 530, 16).stroke();
+    doc.fillColor(black).fontSize(8);
+    doc.text('MES VENCIMIENTO', 50, currentY + 4, { width: 100, bold: true });
+    doc.text('COBRO PENDIENTE (INGRESOS)', 160, currentY + 4, { width: 170, align: 'right', bold: true });
+    doc.text('PAGOS POR EJECUTAR (EGRESOS)', 350, currentY + 4, { width: 180, align: 'right', bold: true });
+    currentY += 16;
+
+    proyecciones.forEach((p, idx) => {
+      if (idx % 2 === 1) doc.rect(40, currentY, 530, 16).fill('#F8FAFC');
+      doc.strokeColor('#E2E8F0').lineWidth(0.4).rect(40, currentY, 530, 16).stroke();
+
+      doc.fillColor(black).fontSize(7.5);
+      doc.text(p.mes.toUpperCase(), 50, currentY + 4, { width: 100, bold: true });
+      doc.fillColor('#059669').text(`+$${Math.round(p.ingresosFuturos || 0).toLocaleString('es-CL')}`, 160, currentY + 4, { width: 170, align: 'right' });
+      doc.fillColor('#dc2626').text(`-$${Math.round(p.egresosFuturos || 0).toLocaleString('es-CL')}`, 350, currentY + 4, { width: 180, align: 'right' });
+      currentY += 16;
+    });
+  }
+
+  doc.end();
+};

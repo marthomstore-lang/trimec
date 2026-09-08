@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { get, run, query, initDb } from './db.js';
-import { generateBudgetPDF, generateTechnicalReportPDF } from './pdfGenerator.js';
+import { generateBudgetPDF, generateTechnicalReportPDF, generateBodegaStockPDF, generateFlujoCajaPDF } from './pdfGenerator.js';
 import { createClient } from '@supabase/supabase-js';
 import { createDriveFolder, uploadFileToDrive, deleteFileFromDrive } from './googleDrive.js';
 
@@ -105,11 +105,11 @@ initDb()
 // Middleware de Autenticación
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
+  const token = authHeader ? authHeader.split(' ')[1] : req.query.token;
+  if (!token) {
     return res.status(401).json({ message: 'Token no provisto' });
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -645,6 +645,11 @@ app.put('/api/ots/:id', authenticate, checkRole(['admin', 'supervisor']), async 
       return res.status(404).json({ error: 'OT no encontrada' });
     }
 
+    const lockedStates = ['Liquidar', 'LIQ', 'Liquidada', 'Facturar', 'FAC', 'Facturada', 'CER', 'Cerrada', 'Cerradas', 'Terminada'];
+    if (lockedStates.includes(otExisting.estado) && req.user?.rol !== 'admin') {
+      return res.status(403).json({ error: `La OT se encuentra en estado '${otExisting.estado}' y está bloqueada. Solo el Administrador puede modificar su estado, datos o volver atrás.` });
+    }
+
     const nuevo_id = body.nuevo_id;
     const targetId = (nuevo_id && nuevo_id !== id) ? nuevo_id : id;
 
@@ -726,12 +731,15 @@ app.get('/api/hh/ot/:ot_id', authenticate, async (req, res) => {
   }
 });
 
-const checkOtNotLocked = async (otId) => {
+const checkOtNotLocked = async (otId, userRole = null) => {
   if (!otId) return { locked: false };
   const ot = await get('SELECT estado FROM ordenes_trabajo WHERE id = ?', [otId]);
   if (!ot) return { locked: false };
-  const lockedStates = ['LIQ', 'Liquidada', 'FAC', 'Facturada', 'CER', 'Cerrada'];
+  const lockedStates = ['Liquidar', 'LIQ', 'Liquidada', 'Facturar', 'FAC', 'Facturada', 'CER', 'Cerrada', 'Cerradas', 'Terminada'];
   if (lockedStates.includes(ot.estado)) {
+    if (userRole === 'admin') {
+      return { locked: false, estado: ot.estado, wasLocked: true };
+    }
     return { locked: true, estado: ot.estado };
   }
   return { locked: false, estado: ot.estado };
@@ -740,9 +748,9 @@ const checkOtNotLocked = async (otId) => {
 app.post('/api/hh', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
   try {
-    const lockCheck = await checkOtNotLocked(ot_id);
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
     if (lockCheck.locked) {
-      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede ingresar o modificar datos.` });
     }
 
     const result = await run(
@@ -759,6 +767,11 @@ app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor', 'operador
   const { id } = req.params;
   const { ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad } = req.body;
   try {
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
+    if (lockCheck.locked) {
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede modificar datos.` });
+    }
+
     await run(
       `UPDATE registro_hh 
        SET ot_id = ?, trabajador_id = ?, fecha = ?, horas_normales = ?, horas_extra = ?, ubicacion = ?, actividad = ?
@@ -774,6 +787,13 @@ app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor', 'operador
 app.delete('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   try {
+    const rec = await get('SELECT ot_id FROM registro_hh WHERE id = ?', [id]);
+    if (rec) {
+      const lockCheck = await checkOtNotLocked(rec.ot_id, req.user?.rol);
+      if (lockCheck.locked) {
+        return res.status(403).json({ error: `La OT se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede eliminar registros.` });
+      }
+    }
     await run('DELETE FROM registro_hh WHERE id = ?', [id]);
     res.json({ message: 'Registro de horas eliminado' });
   } catch (error) {
@@ -810,9 +830,9 @@ app.get('/api/gastos/ot/:ot_id', authenticate, async (req, res) => {
 app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta } = req.body;
   try {
-    const lockCheck = await checkOtNotLocked(ot_id);
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
     if (lockCheck.locked) {
-      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede ingresar o modificar gastos.` });
     }
 
     const result = await run(
@@ -828,6 +848,13 @@ app.post('/api/gastos', authenticate, checkRole(['admin', 'supervisor', 'operado
 app.delete('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   try {
+    const rec = await get('SELECT ot_id FROM gastos_diarios WHERE id = ?', [id]);
+    if (rec) {
+      const lockCheck = await checkOtNotLocked(rec.ot_id, req.user?.rol);
+      if (lockCheck.locked) {
+        return res.status(403).json({ error: `La OT se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede eliminar gastos.` });
+      }
+    }
     await run('DELETE FROM gastos_diarios WHERE id = ?', [id]);
     res.json({ message: 'Gasto eliminado' });
   } catch (error) {
@@ -839,6 +866,11 @@ app.put('/api/gastos/:id', authenticate, checkRole(['admin', 'supervisor', 'oper
   const { id } = req.params;
   const { ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total, foto_boleta } = req.body;
   try {
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
+    if (lockCheck.locked) {
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede modificar gastos.` });
+    }
+
     const net = parseFloat(valor_neto) || 0.0;
     const iva = valor_iva !== undefined ? parseFloat(valor_iva) : net * 0.19;
     const total = valor_total !== undefined ? parseFloat(valor_total) : net + iva;
@@ -888,9 +920,9 @@ app.post('/api/traslados', authenticate, checkRole(['admin', 'supervisor', 'oper
   } = req.body;
 
   try {
-    const lockCheck = await checkOtNotLocked(ot_id);
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
     if (lockCheck.locked) {
-      return res.status(400).json({ error: `La OT ${ot_id} se encuentra en estado '${lockCheck.estado}' y no permite nuevos ingresos.` });
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede registrar traslados.` });
     }
     const result = await run(`
       INSERT INTO traslados_viajes (
@@ -933,6 +965,11 @@ app.put('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor', 'o
   } = req.body;
 
   try {
+    const lockCheck = await checkOtNotLocked(ot_id, req.user?.rol);
+    if (lockCheck.locked) {
+      return res.status(403).json({ error: `La OT ${ot_id} se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede modificar traslados.` });
+    }
+
     await run(`
       UPDATE traslados_viajes 
       SET ot_id = ?, trabajador_id = ?, fecha = ?, patente_vehiculo = ?, km_inicio = ?, km_termino = ?,
@@ -961,6 +998,13 @@ app.put('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor', 'o
 app.delete('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
   const { id } = req.params;
   try {
+    const rec = await get('SELECT ot_id FROM traslados_viajes WHERE id = ?', [id]);
+    if (rec) {
+      const lockCheck = await checkOtNotLocked(rec.ot_id, req.user?.rol);
+      if (lockCheck.locked) {
+        return res.status(403).json({ error: `La OT se encuentra en etapa '${lockCheck.estado}' y está bloqueada. Solo el Administrador puede eliminar traslados.` });
+      }
+    }
     await run('DELETE FROM traslados_viajes WHERE id = ?', [id]);
     res.json({ message: 'Traslado eliminado' });
   } catch (error) {
@@ -973,11 +1017,10 @@ app.delete('/api/traslados/:id', authenticate, checkRole(['admin', 'supervisor']
 app.get('/api/facturacion', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
   try {
     const factRecords = await query(`
-      SELECT f.*, o.detalle as ot_detalle, o.monto_neto_presupuesto, c.razon_social as cliente_nombre 
+      SELECT f.*, o.detalle as ot_detalle, o.monto_neto_presupuesto, o.estado as ot_estado, c.razon_social as cliente_nombre 
       FROM facturacion f
       JOIN ordenes_trabajo o ON f.ot_id = o.id
       JOIN clientes c ON o.cliente_id = c.id
-      WHERE o.estado = 'Facturada'
       ORDER BY f.id DESC
     `);
     res.json(factRecords);
@@ -986,15 +1029,54 @@ app.get('/api/facturacion', authenticate, checkRole(['admin', 'contador']), asyn
   }
 });
 
+app.get('/api/facturacion/ots-disponibles', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
+  try {
+    const ots = await query(`
+      SELECT o.id, o.detalle, o.monto_neto_presupuesto, o.estado, c.razon_social as cliente_nombre
+      FROM ordenes_trabajo o
+      JOIN clientes c ON o.cliente_id = c.id
+      ORDER BY o.fecha_solicitud DESC
+    `);
+    res.json(ots);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/facturacion', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
+  const { ot_id, nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago, fecha_vencimiento, fecha_pago } = req.body;
+  if (!ot_id) return res.status(400).json({ message: 'El ID de la OT es obligatorio' });
+  try {
+    const existing = await get('SELECT id FROM facturacion WHERE ot_id = ?', [ot_id]);
+    if (existing) {
+      await run(
+        `UPDATE facturacion 
+         SET nro_oc = ?, fecha_oc = ?, nro_hes = ?, nro_factura = ?, fecha_factura = ?, estado_pago = ?, fecha_vencimiento = ?, fecha_pago = ? 
+         WHERE ot_id = ?`,
+        [nro_oc || null, fecha_oc || null, nro_hes || null, nro_factura || null, fecha_factura || null, estado_pago || 'Pendiente', fecha_vencimiento || null, fecha_pago || null, ot_id]
+      );
+    } else {
+      await run(
+        `INSERT INTO facturacion (ot_id, nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago, fecha_vencimiento, fecha_pago)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ot_id, nro_oc || null, fecha_oc || null, nro_hes || null, nro_factura || null, fecha_factura || null, estado_pago || 'Pendiente', fecha_vencimiento || null, fecha_pago || null]
+      );
+    }
+    res.status(201).json({ message: 'Datos de facturación registrados con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/facturacion/:ot_id', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
   const { ot_id } = req.params;
-  const { nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago, fecha_vencimiento } = req.body;
+  const { nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago, fecha_vencimiento, fecha_pago } = req.body;
   try {
     await run(
       `UPDATE facturacion 
-       SET nro_oc = ?, fecha_oc = ?, nro_hes = ?, nro_factura = ?, fecha_factura = ?, estado_pago = ?, fecha_vencimiento = ? 
+       SET nro_oc = ?, fecha_oc = ?, nro_hes = ?, nro_factura = ?, fecha_factura = ?, estado_pago = ?, fecha_vencimiento = ?, fecha_pago = ? 
        WHERE ot_id = ?`,
-      [nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago || 'Pendiente', fecha_vencimiento || null, ot_id]
+      [nro_oc, fecha_oc, nro_hes, nro_factura, fecha_factura, estado_pago || 'Pendiente', fecha_vencimiento || null, fecha_pago || null, ot_id]
     );
     res.json({ message: 'Datos de facturación actualizados' });
   } catch (error) {
@@ -1026,6 +1108,22 @@ app.post('/api/finanzas/gastos-generales', authenticate, checkRole(['admin', 'co
   }
 });
 
+app.put('/api/finanzas/gastos-generales/:id', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
+  const { id } = req.params;
+  const { fecha, familia, detalle, valor_total, estado_pago, fecha_vencimiento } = req.body;
+  try {
+    await run(
+      `UPDATE gastos_generales 
+       SET fecha = ?, familia = ?, detalle = ?, valor_total = ?, estado_pago = ?, fecha_vencimiento = ? 
+       WHERE id = ?`,
+      [fecha, familia, detalle, parseFloat(valor_total) || 0.0, estado_pago || 'Pagado', fecha_vencimiento || null, id]
+    );
+    res.json({ message: 'Gasto general actualizado con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.delete('/api/finanzas/gastos-generales/:id', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
   const { id } = req.params;
   try {
@@ -1039,12 +1137,14 @@ app.delete('/api/finanzas/gastos-generales/:id', authenticate, checkRole(['admin
 // Reporte de Flujo de Caja Mensual
 app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
   try {
-    // 1. Ingresos por OTs Facturadas (Facturaciones donde el estado no sea Anulado)
+    // 1. Ingresos por OTs Facturadas y Pagadas
+    // Si está Pagado, se computa en el mes de fecha_pago (o fecha_factura / fecha_solicitud como fallback)
     const ingresos = await query(`
-      SELECT SUBSTR(o.fecha_solicitud, 1, 7) as mes, SUM(o.monto_neto_presupuesto) as total_ingreso
+      SELECT SUBSTR(COALESCE(NULLIF(f.fecha_pago, ''), NULLIF(f.fecha_factura, ''), o.fecha_solicitud), 1, 7) as mes, 
+             SUM(o.monto_neto_presupuesto) as total_ingreso
       FROM ordenes_trabajo o
       JOIN facturacion f ON f.ot_id = o.id
-      WHERE f.nro_factura IS NOT NULL AND f.nro_factura != '' AND f.estado_pago != 'Anulado'
+      WHERE f.nro_factura IS NOT NULL AND f.nro_factura != '' AND f.estado_pago = 'Pagado'
       GROUP BY mes
     `);
 
@@ -1055,7 +1155,7 @@ app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador'
       GROUP BY mes
     `);
 
-    // 3. Egresos Variables de OTs (Materiales y Comidas de OTs activas)
+    // 3. Egresos Variables de OTs (Materiales y Comidas de OTs)
     const egresosOTs = await query(`
       SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_neto) as total_egreso_ot
       FROM gastos_diarios
@@ -1261,6 +1361,64 @@ app.get('/api/ots/:id/informe-pdf', async (req, res) => {
   } catch (error) {
     console.error('Error al generar PDF de Informe Técnico:', error);
     res.status(500).send('Error interno al generar el PDF del informe técnico.');
+  }
+});
+
+// PDF DE STOCK EN BODEGA
+app.get('/api/inventario/pdf', authenticate, async (req, res) => {
+  try {
+    const items = await query('SELECT * FROM inventario ORDER BY familia ASC, descripcion ASC');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=stock-bodega-trimec.pdf');
+    generateBodegaStockPDF(items, res);
+  } catch (error) {
+    console.error('Error al generar PDF de stock de bodega:', error);
+    res.status(500).send('Error interno al generar el PDF de stock de bodega.');
+  }
+});
+
+// PDF DE FLUJO DE CAJA Y FINANZAS
+app.get('/api/finanzas/flujo-caja/pdf', authenticate, checkRole(['admin', 'contador']), async (req, res) => {
+  try {
+    const ingresos = await query(`
+      SELECT SUBSTR(COALESCE(NULLIF(f.fecha_pago, ''), NULLIF(f.fecha_factura, ''), o.fecha_solicitud), 1, 7) as mes, 
+             SUM(o.monto_neto_presupuesto) as total_ingreso
+      FROM ordenes_trabajo o
+      JOIN facturacion f ON f.ot_id = o.id
+      WHERE f.nro_factura IS NOT NULL AND f.nro_factura != '' AND f.estado_pago = 'Pagado'
+      GROUP BY mes
+    `);
+    const egresosFijos = await query(`SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_total) as total_egreso_fijo FROM gastos_generales GROUP BY mes`);
+    const egresosOTs = await query(`SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_neto) as total_egreso_ot FROM gastos_diarios GROUP BY mes`);
+    const flujoMensual = {};
+    ingresos.forEach(item => { if (item.mes) flujoMensual[item.mes] = { mes: item.mes, ingresos: item.total_ingreso || 0, egresos: 0 }; });
+    egresosFijos.forEach(item => { if (item.mes) { if (!flujoMensual[item.mes]) flujoMensual[item.mes] = { mes: item.mes, ingresos: 0, egresos: 0 }; flujoMensual[item.mes].egresos += item.total_egreso_fijo || 0; } });
+    egresosOTs.forEach(item => { if (item.mes) { if (!flujoMensual[item.mes]) flujoMensual[item.mes] = { mes: item.mes, ingresos: 0, egresos: 0 }; flujoMensual[item.mes].egresos += item.total_egreso_ot || 0; } });
+    const cashFlow = Object.values(flujoMensual).sort((a, b) => a.mes.localeCompare(b.mes));
+
+    const billingList = await query(`SELECT f.*, o.monto_neto_presupuesto FROM facturacion f JOIN ordenes_trabajo o ON f.ot_id = o.id WHERE f.estado_pago = 'Pendiente'`);
+    const generalExpenses = await query(`SELECT * FROM gastos_generales WHERE estado_pago = 'Pendiente'`);
+    const proyObj = {};
+    billingList.forEach(b => {
+      const fecha = b.fecha_vencimiento || b.fecha_factura || new Date().toISOString().substring(0, 7);
+      const mes = fecha.substring(0, 7);
+      if (!proyObj[mes]) proyObj[mes] = { mes, ingresosFuturos: 0, egresosFuturos: 0 };
+      proyObj[mes].ingresosFuturos += parseFloat(b.monto_neto_presupuesto) || 0;
+    });
+    generalExpenses.forEach(e => {
+      const fecha = e.fecha_vencimiento || e.fecha || new Date().toISOString().substring(0, 7);
+      const mes = fecha.substring(0, 7);
+      if (!proyObj[mes]) proyObj[mes] = { mes, ingresosFuturos: 0, egresosFuturos: 0 };
+      proyObj[mes].egresosFuturos += parseFloat(e.valor_total) || 0;
+    });
+    const proyecciones = Object.values(proyObj).sort((a, b) => a.mes.localeCompare(b.mes));
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=flujo-caja-trimec.pdf');
+    generateFlujoCajaPDF(cashFlow, proyecciones, res);
+  } catch (error) {
+    console.error('Error al generar PDF de flujo de caja:', error);
+    res.status(500).send('Error interno al generar el PDF de flujo de caja.');
   }
 });
 
