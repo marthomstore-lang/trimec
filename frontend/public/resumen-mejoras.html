@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>TRIMEC SpA - Resumen de Mejoras del Sistema</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 1.5cm 1.2cm;
+    }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #1e293b;
+      background-color: #f8fafc;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .print-wrapper {
+      max-width: 850px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #005b96;
+      padding-bottom: 15px;
+      margin-bottom: 25px;
+    }
+    .logo-box h1 {
+      margin: 0;
+      color: #005b96;
+      font-size: 26px;
+      letter-spacing: 0.5px;
+      font-weight: 800;
+    }
+    .logo-box p {
+      margin: 4px 0 0 0;
+      color: #64748b;
+      font-size: 13px;
+    }
+    .doc-info {
+      text-align: right;
+    }
+    .doc-info .doc-badge {
+      background: #005b96;
+      color: #ffffff;
+      padding: 5px 12px;
+      font-weight: 700;
+      font-size: 13px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+    .doc-info p {
+      margin: 2px 0;
+      font-size: 12px;
+      color: #475569;
+    }
+    .title-banner {
+      background: #f1f5f9;
+      border-left: 5px solid #005b96;
+      padding: 12px 16px;
+      margin-bottom: 25px;
+    }
+    .title-banner h2 {
+      margin: 0;
+      font-size: 17px;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
+    .title-banner p {
+      margin: 4px 0 0 0;
+      font-size: 13px;
+      color: #475569;
+    }
+    .section-title {
+      font-size: 15px;
+      color: #005b96;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 5px;
+      margin-top: 25px;
+      margin-bottom: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .feature-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      background: #ffffff;
+      page-break-inside: avoid;
+    }
+    .feature-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .feature-num {
+      font-weight: 800;
+      color: #005b96;
+      font-size: 15px;
+    }
+    .feature-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #e2e8f0;
+      color: #334155;
+    }
+    .feature-tag.admin { background: #dbeafe; color: #1e40af; }
+    .feature-tag.contador { background: #f3e8ff; color: #6b21a8; }
+    .feature-tag.finanzas { background: #dcfce7; color: #166534; }
+    .feature-tag.bodega { background: #ffedd5; color: #9a3412; }
+    .feature-desc {
+      font-size: 13px;
+      color: #334155;
+      margin: 0 0 8px 0;
+    }
+    .feature-points {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12.5px;
+      color: #475569;
+    }
+    .feature-points li {
+      margin-bottom: 4px;
+    }
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 12.5px;
+      page-break-inside: avoid;
+    }
+    .summary-table th {
+      background: #005b96;
+      color: #ffffff;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .summary-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #1e293b;
+    }
+    .summary-table tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 45px;
+      padding-top: 25px;
+      page-break-inside: avoid;
+    }
+    .sig-box {
+      width: 28%;
+      text-align: center;
+      border-top: 1px solid #94a3b8;
+      padding-top: 8px;
+    }
+    .sig-box strong {
+      display: block;
+      font-size: 12px;
+      color: #0f172a;
+    }
+    .sig-box span {
+      font-size: 11px;
+      color: #64748b;
+    }
+    .no-print-bar {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+    }
+    .btn-print {
+      background: #005b96;
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,91,150,0.3);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-print:hover {
+      background: #0284c7;
+    }
+    @media print {
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+      .print-wrapper {
+        box-shadow: none !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+      }
+      .no-print-bar {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print-bar">
+    <button class="btn-print" onclick="window.print()">
+      🖨️ Imprimir / Guardar en PDF
+    </button>
+  </div>
+
+  <div class="print-wrapper">
+    <!-- Encabezado Institucional -->
+    <div class="header">
+      <div class="logo-box">
+        <h1>TRIMEC SpA</h1>
+        <p>Servicios Metalmecánicos, Maestranza e Ingeniería Industrial</p>
+      </div>
+      <div class="doc-info">
+        <span class="doc-badge">INFORME EJECUTIVO</span>
+        <p><strong>Fecha:</strong> Septiembre 2026</p>
+        <p><strong>Versión:</strong> 2.1 (Producción)</p>
+        <p><strong>Plataforma:</strong> Sistema Web TRIMEC</p>
+      </div>
+    </div>
+
+    <!-- Banner de Título -->
+    <div class="title-banner">
+      <h2>Resumen de Actualizaciones y Mejoras del Sistema</h2>
+      <p>Documento de entrega técnica y operativa de los 6 requerimientos implementados en la plataforma.</p>
+    </div>
+
+    <!-- Detalle de Mejoras -->
+    <div class="section-title">Detalle de las 6 Actualizaciones Implementadas</div>
+
+    <!-- Item 1 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">1. Bloqueo de OT en Etapa "Liquidar" y Control Administrativo</span>
+        <span class="feature-tag admin">Seguridad y Control</span>
+      </div>
+      <p class="feature-desc">
+        Blindaje financiero y operativo que previene cargas extemporáneas de costos cuando una Orden de Trabajo entra en proceso de cierre o cobro.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Bloqueo automático:</strong> Al pasar a <em>Liquidar</em> (y posteriores: <em>Liquidada</em>, <em>Facturar</em>, <em>Facturada</em> o <em>Cerrada</em>), se inhabilita el ingreso o modificación de Horas Hombre (HH), compras de materiales, consumos de bodega y viajes para supervisores y operadores.</li>
+        <li><strong>Bypass exclusivo Administrador:</strong> Solo el perfil Administrador cuenta con atribuciones para corregir registros dentro de la OT bloqueada o para <strong>revertir / volver atrás</strong> el estado hacia <em>En Proceso</em>.</li>
+        <li><strong>Protección en Backend:</strong> Todo intento de modificación no autorizado es rechazado a nivel de base de datos con código <code>HTTP 403 Forbidden</code>.</li>
+      </ul>
+    </div>
+
+    <!-- Item 2 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">2. Módulo de Facturación Integral para Contabilidad</span>
+        <span class="feature-tag contador">Módulo Contador</span>
+      </div>
+      <p class="feature-desc">
+        Habilitación de gestión activa de cobros desde el panel de contabilidad, eliminando cuellos de botella para el área contable.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Botón "+ Agregar Facturación":</strong> Permite al contador incorporar cualquier Orden de Trabajo al flujo de facturación mediante un selector interactivo de OTs.</li>
+        <li><strong>Pipeline visible completo:</strong> La tabla de facturación muestra todas las órdenes en gestión de cobro sin restringirse únicamente a las finalizadas.</li>
+        <li><strong>Campos oficiales completos:</strong> Permite ingresar N° y fecha de Orden de Compra (OC), Hoja de Entrada de Servicio (HES), N° Factura SII, fecha de emisión, fecha de vencimiento y fecha real de pago.</li>
+      </ul>
+    </div>
+
+    <!-- Item 3 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">3. Edición y Gestión de Gastos Generales (Egresos Fijos)</span>
+        <span class="feature-tag contador">Módulo Contador</span>
+      </div>
+      <p class="feature-desc">
+        Facultad para modificar y ajustar egresos operativos mensuales de la empresa sin requerir eliminarlos ni recrearlos.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Acción "✏️ Editar" por fila:</strong> Permite abrir una ventana modal para corregir fecha, categoría/familia (Arriendo, Sueldos, Cuentas básicas, etc.), glosa, monto total y estado de pago.</li>
+        <li><strong>Sincronización instantánea:</strong> La actualización recalcula inmediatamente los egresos en los resúmenes y en el flujo de caja.</li>
+      </ul>
+    </div>
+
+    <!-- Item 4 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">4. Botón Rápido "💰 Pagado" y Fecha Real para Flujo de Caja</span>
+        <span class="feature-tag finanzas">Finanzas y Flujo de Caja</span>
+      </div>
+      <p class="feature-desc">
+        Asignación precisa de la fecha en que el dinero ingresa efectivamente a la cuenta bancaria de la empresa.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Botón rápido "💰 Pagado":</strong> En un solo clic permite confirmar el pago de una factura pendiente, solicitando la fecha en que se acreditó la transferencia (por defecto la fecha de hoy).</li>
+        <li><strong>Impacto en Flujo de Caja:</strong> El ingreso se contabiliza con total fidelidad en el mes de la <em>fecha_pago</em>, reflejando la liquidez bancaria real de TRIMEC SpA.</li>
+      </ul>
+    </div>
+
+    <!-- Item 5 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">5. Reporte Oficial de Stock de Bodega Valorizado en PDF</span>
+        <span class="feature-tag bodega">Bodega e Inventario</span>
+      </div>
+      <p class="feature-desc">
+        Generación de documento formal descargable con el valor total y existencia de materiales en taller.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Formato corporativo TRIMEC:</strong> Encabezado con logotipo, RUT, datos de contacto y fecha de emisión.</li>
+        <li><strong>Detalle valorizado:</strong> Listado por SKU, descripción, familia, ubicación, stock físico, costo unitario y total valorizado en pesos chilenos ($ CLP).</li>
+        <li><strong>Alerta de Stock Crítico:</strong> Indicador visual destacado <code>🚨 CRÍTICO</code> cuando las existencias son iguales o inferiores al stock mínimo fijado.</li>
+        <li><strong>Disponibilidad:</strong> Botón <em>"📄 Descargar PDF Stock"</em> en los módulos de Administrador y Supervisor.</li>
+      </ul>
+    </div>
+
+    <!-- Item 6 -->
+    <div class="feature-card">
+      <div class="feature-header">
+        <span class="feature-num">6. Estilo de Impresión en Fondo Blanco y PDF de Flujo de Caja</span>
+        <span class="feature-tag finanzas">Presentación y Reportes</span>
+      </div>
+      <p class="feature-desc">
+        Estandarización visual de reportes con fondo blanco limpio (#ffffff) y exportación formal de balances mensuales.
+      </p>
+      <ul class="feature-points">
+        <li><strong>Reglas de Impresión (@media print):</strong> Al imprimir cualquier pantalla (Ctrl+P), la interfaz cambia automáticamente a fondo blanco con tipografía oscura, ocultando barras de menú y botones para un acabado idéntico al PDF del Presupuesto.</li>
+        <li><strong>PDF de Flujo de Caja:</strong> Botón <em>"📥 Descargar PDF Flujo de Caja"</em> que genera un documento PDF formal con el balance mensual de ingresos cobrados vs egresos y las proyecciones financieras futuras.</li>
+      </ul>
+    </div>
+
+    <!-- Matriz Resumen -->
+    <div class="section-title">Matriz Resumen de Módulos y Perfiles</div>
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Módulo / Componente</th>
+          <th>Funcionalidad Clave</th>
+          <th>Perfiles con Acceso</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Órdenes de Trabajo</strong></td>
+          <td>Bloqueo en Liquidar y reversión de estado</td>
+          <td>Admin (Acceso total) / Supervisores (Lectura)</td>
+          <td>✅ Operativo</td>
+        </tr>
+        <tr>
+          <td><strong>Módulo Contador</strong></td>
+          <td>+ Agregar Facturación y selector de OTs</td>
+          <td>Admin / Contador</td>
+          <td>✅ Operativo</td>
+        </tr>
+        <tr>
+          <td><strong>Egresos Generales</strong></td>
+          <td>Edición modal de gastos fijos operacionales</td>
+          <td>Admin / Contador</td>
+          <td>✅ Operativo</td>
+        </tr>
+        <tr>
+          <td><strong>Cobranza de OTs</strong></td>
+          <td>Botón rápido "💰 Pagado" y fecha de acreditación</td>
+          <td>Admin / Contador</td>
+          <td>✅ Operativo</td>
+        </tr>
+        <tr>
+          <td><strong>Bodega e Inventario</strong></td>
+          <td>Descarga PDF oficial valorizado con alertas</td>
+          <td>Admin / Supervisor</td>
+          <td>✅ Operativo</td>
+        </tr>
+        <tr>
+          <td><strong>Flujo de Caja</strong></td>
+          <td>Descarga PDF formal + Impresión en fondo blanco</td>
+          <td>Admin / Contador / Todos</td>
+          <td>✅ Operativo</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Firmas de Validación -->
+    <div class="signatures">
+      <div class="sig-box">
+        <strong>Administración General</strong>
+        <span>TRIMEC SpA</span>
+      </div>
+      <div class="sig-box">
+        <strong>Área Contable y Finanzas</strong>
+        <span>TRIMEC SpA</span>
+      </div>
+      <div class="sig-box">
+        <strong>Supervisión de Operaciones</strong>
+        <span>TRIMEC SpA</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
