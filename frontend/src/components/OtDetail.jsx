@@ -1187,12 +1187,12 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                   <span style={{ fontSize: '1.5rem', flexShrink: 0 }}>{ot.drive_folder_url ? '📂' : '📁'}</span>
                   <div style={{ overflow: 'hidden' }}>
                     <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#4285f4', fontWeight: 600 }}>
-                      {ot.drive_folder_url ? 'Carpeta de la OT en Google Drive' : 'Carpeta Raíz en Google Drive'}
+                      {ot.drive_folder_url ? 'Carpeta Privada de la OT en Google Drive' : 'Carpeta Privada en Google Drive'}
                     </h4>
                     <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                       {ot.drive_folder_url 
-                        ? `Asignada: OT ${ot.id} - ${ot.cliente_nombre}` 
-                        : 'Respaldo de OTs, fotos de terreno de operarios y órdenes de compra.'}
+                        ? `Documentos exclusivos: OT ${ot.id} - ${ot.cliente_nombre || ''}` 
+                        : 'Espacio privado e independiente para respaldos, fotos y documentos de esta OT.'}
                     </p>
                   </div>
                 </div>
@@ -1203,30 +1203,20 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                     rel="noopener noreferrer" 
                     className="btn btn-primary btn-sm"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4' }}
+                    title="Abrir la subcarpeta privada de esta Orden de Trabajo"
                   >
                     Abrir Carpeta ➡️
                   </a>
                 ) : (
-                  <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                    <a 
-                      href="https://drive.google.com/drive/folders/1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz?usp=sharing"
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="btn btn-secondary btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.35rem 0.5rem' }}
-                      title="Abrir carpeta raíz general"
-                    >
-                      Raíz 📁
-                    </a>
-                    <button 
-                      onClick={handleGenerateDriveFolder}
-                      disabled={generatingDrive}
-                      className="btn btn-primary btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4', fontSize: '0.75rem', padding: '0.35rem 0.5rem' }}
-                    >
-                      {generatingDrive ? 'Creando...' : '➕ Crear Carpeta'}
-                    </button>
-                  </div>
+                  <button 
+                    onClick={handleGenerateDriveFolder}
+                    disabled={generatingDrive}
+                    className="btn btn-primary btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', backgroundColor: '#4285f4', borderColor: '#4285f4', fontSize: '0.75rem', padding: '0.35rem 0.5rem' }}
+                    title="Crear o vincular la subcarpeta exclusiva para esta OT"
+                  >
+                    {generatingDrive ? 'Vinculando...' : '➕ Vincular Carpeta'}
+                  </button>
                 )}
               </div>
               

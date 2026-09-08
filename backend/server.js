@@ -567,8 +567,9 @@ app.post('/api/ots/:id/crear-carpeta-drive', authenticate, checkRole(['admin', '
       return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
     }
 
-    if (ot.drive_folder_url) {
-      return res.json({ drive_folder_url: ot.drive_folder_url, message: 'La carpeta ya existe' });
+    const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz';
+    if (ot.drive_folder_url && !ot.drive_folder_url.includes('?q=') && !ot.drive_folder_url.includes(PARENT_FOLDER_ID)) {
+      return res.json({ drive_folder_url: ot.drive_folder_url, message: 'La carpeta ya existe y está vinculada' });
     }
 
     const folderName = `OT ${id} - ${ot.razon_social || ''}`.trim();
