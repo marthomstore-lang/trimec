@@ -45,7 +45,9 @@ const apiLimiter = rateLimit({
 // Cabeceras de Seguridad HTTP (Security Headers)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (!req.path.includes('/pdf')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   if (process.env.NODE_ENV === 'production') {
@@ -1369,12 +1371,12 @@ app.get('/api/ots/:id/informe-pdf', async (req, res) => {
 app.get('/api/inventario/pdf', authenticate, async (req, res) => {
   try {
     const items = await query('SELECT * FROM inventario ORDER BY familia ASC, descripcion ASC');
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=stock-bodega-trimec.pdf');
     generateBodegaStockPDF(items, res);
   } catch (error) {
     console.error('Error al generar PDF de stock de bodega:', error);
-    res.status(500).send('Error interno al generar el PDF de stock de bodega.');
+    if (!res.headersSent) {
+      res.status(500).send('Error interno al generar el PDF de stock de bodega.');
+    }
   }
 });
 

@@ -594,9 +594,28 @@ export const generateTechnicalReportPDF = (ot, client, report, { travelList = []
   doc.end();
 };
 
-export const generateBodegaStockPDF = (items = [], res) => {
+export const generateBodegaStockPDF = (rawItems = [], res) => {
+  const items = Array.isArray(rawItems) ? rawItems : [];
   const doc = new PDFDocument({ margin: 30, size: 'LETTER', autoFirstPage: true });
-  doc.pipe(res);
+
+  const chunks = [];
+  doc.on('data', chunk => chunks.push(chunk));
+  doc.on('end', () => {
+    const pdfBuffer = Buffer.concat(chunks);
+    if (!res.headersSent) {
+      res.removeHeader('X-Frame-Options');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.setHeader('Content-Disposition', 'attachment; filename="stock-bodega-trimec.pdf"');
+    }
+    res.end(pdfBuffer);
+  });
+  doc.on('error', (err) => {
+    console.error('Error al generar PDF de Stock en Bodega:', err);
+    if (!res.headersSent) {
+      res.status(500).send('Error interno al generar el PDF de stock de bodega.');
+    }
+  });
 
   const black = '#000000';
   const headerBg = '#EAEAEA';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api, { BASE_URL } from '../utils/api';
+import api, { BASE_URL, downloadPdf } from '../utils/api';
 
 const WORKFLOW_STAGES = [
   { id: '1', name: '1. SP', color: '#f59e0b', statuses: ['SP'] },
@@ -78,8 +78,21 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [clients, setClients] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [openMenuOtId, setOpenMenuOtId] = useState(null);
+  const [downloadingStockPdf, setDownloadingStockPdf] = useState(false);
+
+  const handleDownloadStockPdf = async () => {
+    setDownloadingStockPdf(true);
+    try {
+      await downloadPdf('/inventario/pdf', 'stock-bodega-trimec.pdf');
+      if (showToast) showToast('Stock de bodega descargado exitosamente', 'success');
+    } catch (err) {
+      console.error('Error al descargar PDF de stock:', err);
+      if (showToast) showToast(err.message || 'Error al descargar el PDF de stock', 'danger');
+    } finally {
+      setDownloadingStockPdf(false);
+    }
+  };
 
   useEffect(() => {
     const handleGlobalClick = (e) => {
@@ -1207,14 +1220,12 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button 
                       className="btn btn-secondary btn-sm" 
-                      style={{ background: '#0284c7', borderColor: '#0284c7', color: '#fff' }} 
-                      onClick={() => {
-                        const token = localStorage.getItem('trimec_token');
-                        const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-                        window.open(`${BASE_URL}/inventario/pdf?token=${token || ''}`, '_blank');
-                      }}
+                      style={{ background: '#0284c7', borderColor: '#0284c7', color: '#fff', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }} 
+                      disabled={downloadingStockPdf}
+                      onClick={handleDownloadStockPdf}
+                      title="Descargar archivo PDF con el stock de bodega actual"
                     >
-                      📄 Descargar PDF Stock
+                      {downloadingStockPdf ? '⏳ Generando PDF...' : '📄 Descargar PDF Stock'}
                     </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => { setNewItem({ sku: '', old_sku: '', descripcion: '', proveedor: '', stock: 0, stock_minimo: 10, ubicacion: '', valor_unitario: 0, isEditing: false }); setShowItemModal(true); }}>
                       + Nuevo Artículo

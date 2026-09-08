@@ -45,5 +45,20 @@ const api = async (endpoint, options = {}) => {
   return response.json();
 };
 
+export const downloadPdf = async (endpoint, filename = 'documento.pdf') => {
+  const blob = await api(endpoint);
+  if (!(blob instanceof Blob)) {
+    throw new Error('La respuesta del servidor no es un archivo PDF válido');
+  }
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+};
+
 export default api;
 export { BASE_URL };
