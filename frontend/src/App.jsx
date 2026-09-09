@@ -17,6 +17,7 @@ function App() {
     const otParam = params.get('ot');
     const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
     if (otParam && !isTerreno) return otParam;
+    if (params.get('tab')) return null;
     return localStorage.getItem('trimec_active_ot') || null;
   });
 
@@ -24,6 +25,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
     if (isTerreno) return true;
+    if (params.get('tab') || params.get('ot')) return false;
     return localStorage.getItem('trimec_active_view') === 'terreno';
   });
 

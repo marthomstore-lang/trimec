@@ -172,6 +172,8 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     setNewClient({ ...newClient, razon_social: val, prefijo: suggested });
   };
   const [selectedWorker, setSelectedWorker] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [performanceData, setPerformanceData] = useState([]);
   const [activeTabAdmin, setActiveTabAdmin] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const tabUrl = params.get('tab');
@@ -228,10 +230,12 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const fetchInventario = async () => {
     try {
       const items = await api('/inventario');
-      setInventario(items);
+      setInventario(Array.isArray(items) ? items : []);
       const movs = await api('/inventario/movimientos');
-      setMovimientos(movs);
+      setMovimientos(Array.isArray(movs) ? movs : []);
     } catch (err) {
+      setInventario([]);
+      setMovimientos([]);
       showToast('Error al cargar inventario', 'danger');
     }
   };
@@ -239,8 +243,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const fetchActivos = async () => {
     try {
       const acts = await api('/activos');
-      setActivos(acts);
+      setActivos(Array.isArray(acts) ? acts : []);
     } catch (err) {
+      setActivos([]);
       showToast('Error al cargar activos', 'danger');
     }
   };
@@ -248,8 +253,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const fetchCotizaciones = async () => {
     try {
       const cots = await api('/cotizaciones');
-      setCotizaciones(cots);
+      setCotizaciones(Array.isArray(cots) ? cots : []);
     } catch (err) {
+      setCotizaciones([]);
       showToast('Error al cargar cotizaciones', 'danger');
     }
   };
@@ -439,11 +445,12 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       const monthToFetch = monthOverride !== undefined ? monthOverride : selectedMonthPerf;
       const url = monthToFetch ? `/finanzas/rendimiento-personal?mes=${monthToFetch}` : '/finanzas/rendimiento-personal';
       const data = await api(url);
-      setPerformanceData(data);
-      if (data && data.length > 0 && data[0].mes_calculado && !selectedMonthPerf) {
+      setPerformanceData(Array.isArray(data) ? data : []);
+      if (Array.isArray(data) && data.length > 0 && data[0].mes_calculado && !selectedMonthPerf) {
         setSelectedMonthPerf(data[0].mes_calculado);
       }
     } catch (err) {
+      setPerformanceData([]);
       showToast('Error al cargar rendimiento de personal', 'danger');
     }
   };
@@ -543,9 +550,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
         api('/clientes'),
         api('/trabajadores')
       ]);
-      setOts(otsData);
-      setClients(clientsData);
-      setWorkers(workersData);
+      setOts(Array.isArray(otsData) ? otsData : []);
+      setClients(Array.isArray(clientsData) ? clientsData : []);
+      setWorkers(Array.isArray(workersData) ? workersData : []);
     } catch (err) {
       setError(err.message || 'Error al cargar los datos');
     } finally {
@@ -736,15 +743,17 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   };
 
   // KPIs
-  const totalRevenue = ots.reduce((acc, curr) => acc + (parseFloat(curr.monto_neto_presupuesto) || 0), 0);
-  const totalCost = ots.reduce((acc, curr) => acc + (parseFloat(curr.costo_total) || 0), 0);
+  const safeOts = Array.isArray(ots) ? ots : [];
+  const totalRevenue = safeOts.reduce((acc, curr) => acc + (parseFloat(curr.monto_neto_presupuesto) || 0), 0);
+  const totalCost = safeOts.reduce((acc, curr) => acc + (parseFloat(curr.costo_total) || 0), 0);
   const totalProfit = totalRevenue - totalCost;
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-  const filteredOts = ots.filter(ot => {
-    const matchesSearch = ot.id.toString().includes(searchQuery) ||
-      ot.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ot.detalle.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredOts = safeOts.filter(ot => {
+    const q = (searchQuery || '').toLowerCase();
+    const matchesSearch = (ot.id || '').toString().toLowerCase().includes(q) ||
+      (ot.cliente_nombre || '').toLowerCase().includes(q) ||
+      (ot.detalle || '').toLowerCase().includes(q);
     
     if (!matchesSearch) return false;
     
@@ -1155,7 +1164,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
-                {performanceData.map((perf) => {
+                {(Array.isArray(performanceData) ? performanceData : []).map((perf) => {
                   const progressVal = perf.horas_mensuales_esperadas > 0 ? (perf.horas_reales / perf.horas_mensuales_esperadas) * 100 : 0;
                   const barColor = progressVal >= 70 ? '#10b981' : progressVal >= 30 ? '#f59e0b' : '#ef4444';
                   return (
@@ -1192,7 +1201,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       {/* OT breakdown list */}
                       <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem' }}>
                         <h5 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '0.5rem', fontWeight: 600 }}>Distribución por OT:</h5>
-                        {perf.desglose.length > 0 ? (
+                        {Array.isArray(perf.desglose) && perf.desglose.length > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                             {perf.desglose.map(otBreak => (
                               <div key={otBreak.ot_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', background: 'rgba(255,255,255,0.01)', padding: '0.35rem 0.5rem', borderRadius: '0.375rem' }}>
@@ -1232,7 +1241,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                         onClick={() => setShowCriticalStockModal(true)}
                         title="Hacer clic para ver detalles del stock crítico"
                       >
-                        🚨 {inventario.filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).length} en Stock Crítico
+                        🚨 {(Array.isArray(inventario) ? inventario : []).filter(i => i.stock <= (i.stock_minimo !== undefined ? i.stock_minimo : 10)).length} en Stock Crítico
                       </span>
                     )}
                   </div>
@@ -1271,7 +1280,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {inventario.map(item => {
+                      {(Array.isArray(inventario) ? inventario : []).map(item => {
                         const stockVal = Number(item.stock || 0);
                         const minVal = Number(item.stock_minimo !== undefined ? item.stock_minimo : 10);
                         let badgeBg = '#10b981';
@@ -1296,8 +1305,8 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                               </span>
                             </td>
                             <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{minVal} u.</td>
-                            <td className="text-right notranslate">${Math.round(item.valor_unitario).toLocaleString('es-CL')}</td>
-                            <td className="text-right notranslate" style={{ fontWeight: 600 }}>${Math.round(item.stock * item.valor_unitario).toLocaleString('es-CL')}</td>
+                            <td className="text-right notranslate">${Math.round(item.valor_unitario || 0).toLocaleString('es-CL')}</td>
+                            <td className="text-right notranslate" style={{ fontWeight: 600 }}>${Math.round((item.stock || 0) * (item.valor_unitario || 0)).toLocaleString('es-CL')}</td>
                             <td>
                               <div style={{ display: 'flex', gap: '0.25rem' }}>
                                 <button 
@@ -1321,7 +1330,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                           </tr>
                         );
                       })}
-                      {inventario.length === 0 && (
+                      {(!inventario || inventario.length === 0) && (
                         <tr>
                           <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                             No hay artículos registrados en el inventario.
@@ -1412,7 +1421,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {activos.map(act => (
+                      {(Array.isArray(activos) ? activos : []).map(act => (
                         <tr key={act.id}>
                           <td style={{ fontWeight: 700 }}>
                             {act.nombre}
@@ -1426,7 +1435,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                             </span>
                           </td>
                           <td>{act.proveedor || '-'}</td>
-                          <td className="text-right notranslate">${Math.round(act.valor_compra).toLocaleString('es-CL')}</td>
+                          <td className="text-right notranslate">${Math.round(act.valor_compra || 0).toLocaleString('es-CL')}</td>
                           <td>{act.garantia_vencimiento || '-'}</td>
                           <td>
                             {act.asignado_nombre ? (
@@ -1449,7 +1458,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                           </td>
                         </tr>
                       ))}
-                      {activos.length === 0 && (
+                      {(!activos || activos.length === 0) && (
                         <tr>
                           <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                             No hay activos registrados en el sistema.
@@ -1495,7 +1504,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {cotizaciones.map(cot => {
+                      {(Array.isArray(cotizaciones) ? cotizaciones : []).map(cot => {
                         const net = cot.monto_neto_presupuesto || 0;
                         const total = net * 1.19;
                         return (
@@ -1527,7 +1536,7 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
                           </tr>
                         );
                       })}
-                      {cotizaciones.length === 0 && (
+                      {(!cotizaciones || cotizaciones.length === 0) && (
                         <tr>
                           <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
                             No hay cotizaciones registradas en el sistema.
