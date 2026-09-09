@@ -10,9 +10,28 @@ import api from './utils/api';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [selectedOtId, setSelectedOtId] = useState(null);
-  const [showModuloTerreno, setShowModuloTerreno] = useState(false);
-  const [terrenoOtId, setTerrenoOtId] = useState('');
+
+  // Inicializar estados persistentes leyendo la URL o localStorage
+  const [selectedOtId, setSelectedOtId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const otParam = params.get('ot');
+    const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
+    if (otParam && !isTerreno) return otParam;
+    return localStorage.getItem('trimec_active_ot') || null;
+  });
+
+  const [showModuloTerreno, setShowModuloTerreno] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
+    if (isTerreno) return true;
+    return localStorage.getItem('trimec_active_view') === 'terreno';
+  });
+
+  const [terrenoOtId, setTerrenoOtId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('terreno_ot') || (params.get('terreno') === 'true' ? params.get('ot') : '') || '';
+  });
+
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -23,6 +42,7 @@ function App() {
     }, 4000);
   };
 
+  // Sincronizar URL inicial y escuchar navegación atrás/adelante del navegador
   useEffect(() => {
     const token = localStorage.getItem('trimec_token');
     const savedUser = localStorage.getItem('trimec_user');
@@ -30,17 +50,86 @@ function App() {
       setUser(JSON.parse(savedUser));
     }
 
-    // Detectar si se abrió enlace compartido de terreno (?ot=SER-545&terreno=true)
+    // Asegurar que la URL refleje el estado inicial restaurado
     const params = new URLSearchParams(window.location.search);
-    const otParam = params.get('ot') || params.get('terreno_ot');
-    const isTerreno = params.get('terreno') === 'true' || !!params.get('terreno_ot');
-    if (otParam && isTerreno) {
-      setTerrenoOtId(otParam);
-      setShowModuloTerreno(true);
+    if (selectedOtId && !params.get('ot')) {
+      params.set('ot', selectedOtId);
+      window.history.replaceState({ otId: selectedOtId }, '', `${window.location.pathname}?${params.toString()}`);
+    } else if (showModuloTerreno && !params.get('terreno')) {
+      params.set('terreno', 'true');
+      if (terrenoOtId) params.set('terreno_ot', terrenoOtId);
+      window.history.replaceState({ view: 'terreno' }, '', `${window.location.pathname}?${params.toString()}`);
     }
 
+    const handlePopState = () => {
+      const currentParams = new URLSearchParams(window.location.search);
+      const otParam = currentParams.get('ot');
+      const isTerreno = currentParams.get('terreno') === 'true' || !!currentParams.get('terreno_ot');
+
+      if (isTerreno) {
+        setShowModuloTerreno(true);
+        setSelectedOtId(null);
+        setTerrenoOtId(currentParams.get('terreno_ot') || currentParams.get('ot') || '');
+      } else if (otParam) {
+        setSelectedOtId(otParam);
+        setShowModuloTerreno(false);
+        setTerrenoOtId('');
+      } else {
+        setSelectedOtId(null);
+        setShowModuloTerreno(false);
+        setTerrenoOtId('');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
     setLoading(false);
+
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  const handleSelectOt = (otId) => {
+    setSelectedOtId(otId);
+    setShowModuloTerreno(false);
+    setTerrenoOtId('');
+    
+    const params = new URLSearchParams(window.location.search);
+    if (otId) {
+      localStorage.setItem('trimec_active_ot', otId);
+      localStorage.removeItem('trimec_active_view');
+      params.set('ot', otId);
+      params.delete('terreno');
+      params.delete('terreno_ot');
+      window.history.pushState({ otId }, '', `${window.location.pathname}?${params.toString()}`);
+    } else {
+      localStorage.removeItem('trimec_active_ot');
+      params.delete('ot');
+      const search = params.toString();
+      window.history.pushState({}, '', search ? `${window.location.pathname}?${search}` : window.location.pathname);
+    }
+  };
+
+  const handleToggleTerreno = () => {
+    const nextState = !showModuloTerreno;
+    setShowModuloTerreno(nextState);
+    setSelectedOtId(null);
+    setTerrenoOtId('');
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete('ot');
+
+    if (nextState) {
+      localStorage.removeItem('trimec_active_ot');
+      localStorage.setItem('trimec_active_view', 'terreno');
+      params.set('terreno', 'true');
+      window.history.pushState({ view: 'terreno' }, '', `${window.location.pathname}?${params.toString()}`);
+    } else {
+      localStorage.removeItem('trimec_active_view');
+      params.delete('terreno');
+      params.delete('terreno_ot');
+      const search = params.toString();
+      window.history.pushState({}, '', search ? `${window.location.pathname}?${search}` : window.location.pathname);
+    }
+  };
 
   const handleLoginSuccess = (loggedInUser) => {
     setUser(loggedInUser);
@@ -49,16 +138,28 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('trimec_token');
     localStorage.removeItem('trimec_user');
+    localStorage.removeItem('trimec_active_ot');
+    localStorage.removeItem('trimec_active_view');
+    localStorage.removeItem('trimec_admin_tab');
     setUser(null);
     setSelectedOtId(null);
     setShowModuloTerreno(false);
     setTerrenoOtId('');
+    window.history.replaceState({}, '', window.location.pathname);
   };
 
   const handleOpenTerrenoForOt = (otId) => {
     setTerrenoOtId(otId);
     setSelectedOtId(null);
     setShowModuloTerreno(true);
+    localStorage.removeItem('trimec_active_ot');
+    localStorage.setItem('trimec_active_view', 'terreno');
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete('ot');
+    params.set('terreno', 'true');
+    params.set('terreno_ot', otId);
+    window.history.pushState({ view: 'terreno', otId }, '', `${window.location.pathname}?${params.toString()}`);
   };
 
   if (loading) {
@@ -77,14 +178,14 @@ function App() {
     <div className="app-container">
       {/* HEADER NAV */}
       <nav className="main-nav">
-        <div className="nav-brand" style={{ cursor: 'pointer' }} onClick={() => { setSelectedOtId(null); setShowModuloTerreno(false); setTerrenoOtId(''); }}>
+        <div className="nav-brand" style={{ cursor: 'pointer' }} onClick={() => handleSelectOt(null)}>
           TRIMEC ERP
         </div>
         <div className="nav-user">
           <button 
             className="btn btn-primary btn-sm" 
             style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', padding: '0.3rem 0.6rem', fontSize: '0.85rem' }} 
-            onClick={() => { setSelectedOtId(null); setShowModuloTerreno(!showModuloTerreno); setTerrenoOtId(''); }}
+            onClick={handleToggleTerreno}
           >
             {showModuloTerreno ? '📊 Ver Dashboard' : '📱 Terreno (Offline & Km)'}
           </button>
@@ -105,13 +206,13 @@ function App() {
         {showModuloTerreno ? (
           <ModuloTerrenoOffline 
             initialOtId={terrenoOtId}
-            onBack={() => { setShowModuloTerreno(false); setTerrenoOtId(''); }} 
+            onBack={() => handleToggleTerreno()} 
             showToast={showToast} 
           />
         ) : selectedOtId !== null ? (
           <OtDetail
             otId={selectedOtId}
-            onBack={() => setSelectedOtId(null)}
+            onBack={() => handleSelectOt(null)}
             onOpenTerreno={handleOpenTerrenoForOt}
             userRole={user.rol}
             showToast={showToast}
@@ -119,13 +220,13 @@ function App() {
         ) : (
           <>
             {user.rol === 'admin' && (
-              <DashboardAdmin onSelectOt={setSelectedOtId} showToast={showToast} />
+              <DashboardAdmin onSelectOt={handleSelectOt} showToast={showToast} />
             )}
             {user.rol === 'supervisor' && (
-              <DashboardSupervisor onSelectOt={setSelectedOtId} showToast={showToast} />
+              <DashboardSupervisor onSelectOt={handleSelectOt} showToast={showToast} />
             )}
             {user.rol === 'contador' && (
-              <DashboardContador onSelectOt={setSelectedOtId} showToast={showToast} />
+              <DashboardContador onSelectOt={handleSelectOt} showToast={showToast} />
             )}
             {user.rol === 'operador' && (
               <DashboardOperador showToast={showToast} />

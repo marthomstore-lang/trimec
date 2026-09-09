@@ -172,9 +172,18 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
     setNewClient({ ...newClient, razon_social: val, prefijo: suggested });
   };
   const [selectedWorker, setSelectedWorker] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTabAdmin, setActiveTabAdmin] = useState('ots'); // 'ots', 'rendimiento', 'inventario', 'activos', 'cotizaciones'
-  const [performanceData, setPerformanceData] = useState([]);
+  const [activeTabAdmin, setActiveTabAdmin] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabUrl = params.get('tab');
+    if (tabUrl && ['ots', 'rendimiento', 'inventario', 'activos', 'cotizaciones'].includes(tabUrl)) {
+      return tabUrl;
+    }
+    const saved = localStorage.getItem('trimec_admin_tab');
+    if (saved && ['ots', 'rendimiento', 'inventario', 'activos', 'cotizaciones'].includes(saved)) {
+      return saved;
+    }
+    return 'ots';
+  });
   const [selectedMonthPerf, setSelectedMonthPerf] = useState('');
   const [selectedWorkerForDetail, setSelectedWorkerForDetail] = useState(null);
   const [workerDetailHhList, setWorkerDetailHhList] = useState([]);
@@ -549,6 +558,15 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   }, []);
 
   useEffect(() => {
+    if (activeTabAdmin) {
+      localStorage.setItem('trimec_admin_tab', activeTabAdmin);
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('ot') && !params.get('terreno')) {
+        params.set('tab', activeTabAdmin);
+        window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+      }
+    }
+
     if (activeTabAdmin === 'ots') {
       document.title = 'Trimec - Gestión de OTs y Tarifas';
     } else if (activeTabAdmin === 'rendimiento') {
