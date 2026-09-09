@@ -1450,10 +1450,15 @@ app.post('/api/ots/:otId/archivos', authenticate, async (req, res) => {
 
     let folderUrl = otRecord.drive_folder_url;
     let folderId = null;
+    const parentFolderId = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz';
 
-    if (folderUrl) {
+    if (folderUrl && !folderUrl.includes('?q=')) {
       const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
-      folderId = match ? match[1] : null;
+      const extractedId = match ? match[1] : null;
+      // Solo es válida si no es la carpeta raíz
+      if (extractedId && extractedId !== parentFolderId) {
+        folderId = extractedId;
+      }
     }
 
     // Si la OT no tiene aún subcarpeta privada en Google Drive, crearla y vincularla automáticamente
@@ -1462,12 +1467,15 @@ app.post('/api/ots/:otId/archivos', authenticate, async (req, res) => {
       const clientName = clientRecord ? clientRecord.razon_social : '';
       const folderName = `OT ${otId} - ${clientName}`.trim();
       
-      console.log(`OT ${otId} no tiene subcarpeta en Google Drive. Creando y vinculando carpeta "${folderName}"...`);
+      console.log(`OT ${otId} no tiene subcarpeta privada en Google Drive. Creando y vinculando carpeta "${folderName}"...`);
       folderUrl = await createDriveFolder(folderName);
       if (folderUrl) {
         await run('UPDATE ordenes_trabajo SET drive_folder_url = ? WHERE id = ?', [folderUrl, otId]);
         const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
-        folderId = match ? match[1] : null;
+        const extractedId = match ? match[1] : null;
+        if (extractedId && extractedId !== parentFolderId) {
+          folderId = extractedId;
+        }
       }
     }
 
