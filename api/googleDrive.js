@@ -146,7 +146,8 @@ export async function uploadFileToDrive(folderId, fileName, mimeType, buffer) {
 }
 
 export async function deleteFileFromDrive(fileId) {
-  const auth = getAuthClient(false);
+  // Preferir cliente OAuth2 ya que es el propietario de los archivos subidos
+  const auth = getAuthClient(true) || getAuthClient(false);
   if (!auth) {
     console.warn('Google Drive credentials not configured. Skipping file deletion from Drive.');
     return false;
