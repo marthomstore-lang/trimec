@@ -3,8 +3,20 @@ import { Readable } from 'stream';
 
 const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz';
 
-function getAuthClient() {
-  // Priorizar Cuenta de Servicio (Service Account) verificada y con permisos
+function getOAuth2Client() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+  if (clientId && clientSecret && refreshToken) {
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    return oauth2Client;
+  }
+  return null;
+}
+
+function getServiceAccountClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
@@ -16,24 +28,22 @@ function getAuthClient() {
       scopes: ['https://www.googleapis.com/auth/drive']
     });
   }
-
-  // Fallback a OAuth2 si no hay cuenta de servicio
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-
-  if (clientId && clientSecret && refreshToken) {
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    return oauth2Client;
-  }
-
-  console.warn('Google Drive Service Account or OAuth2 credentials not configured.');
   return null;
 }
 
+function getAuthClient(preferOAuth = false) {
+  if (preferOAuth) {
+    const oauth = getOAuth2Client();
+    if (oauth) return oauth;
+    return getServiceAccountClient();
+  }
+  const sa = getServiceAccountClient();
+  if (sa) return sa;
+  return getOAuth2Client();
+}
+
 export async function createDriveFolder(folderName) {
-  const auth = getAuthClient();
+  const auth = getAuthClient(false);
   if (!auth) {
     console.warn('Google Drive credentials not configured. Skipping folder creation.');
     return null;
@@ -81,10 +91,10 @@ export async function createDriveFolder(folderName) {
 }
 
 export async function uploadFileToDrive(folderId, fileName, mimeType, buffer) {
-  const auth = getAuthClient();
+  // Para subir archivos binarios, preferir OAuth2 ya que cuenta con cuota de almacenamiento en cuentas personales
+  const auth = getAuthClient(true);
   if (!auth) {
-    console.warn('Google Drive credentials not configured. Skipping file upload to Drive.');
-    return null;
+    throw new Error('Las credenciales de Google Drive (OAuth2 o Cuenta de Servicio) no están configuradas.');
   }
 
   try {
@@ -107,20 +117,36 @@ export async function uploadFileToDrive(folderId, fileName, mimeType, buffer) {
     const response = await drive.files.create({
       resource: fileMetadata,
       media: media,
-      fields: 'id, webViewLink',
+      fields: 'id, webViewLink, webContentLink',
       supportsAllDrives: true
     });
 
-    console.log(`Archivo subido exitosamente a Google Drive: ${fileName} (ID: ${response.data.id})`);
-    return response.data.webViewLink || `https://drive.google.com/file/d/${response.data.id}/view`;
+    const fileId = response.data.id;
+    console.log(`Archivo subido exitosamente a Google Drive: ${fileName} (ID: ${fileId})`);
+
+    // Intentar asignar permisos de lectura pública para abrir sin problemas en la plataforma
+    try {
+      await drive.permissions.create({
+        fileId: fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        },
+        supportsAllDrives: true
+      });
+    } catch (permErr) {
+      console.warn('Aviso: no se pudo aplicar permiso público explícito al archivo (puede heredar de la carpeta):', permErr.message);
+    }
+
+    return response.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
   } catch (error) {
     console.error('Error al subir archivo a Google Drive (API Error):', error.message || error);
-    return null;
+    throw error;
   }
 }
 
 export async function deleteFileFromDrive(fileId) {
-  const auth = getAuthClient();
+  const auth = getAuthClient(false);
   if (!auth) {
     console.warn('Google Drive credentials not configured. Skipping file deletion from Drive.');
     return false;

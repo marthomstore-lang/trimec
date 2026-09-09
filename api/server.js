@@ -1442,66 +1442,78 @@ app.post('/api/ots/:otId/archivos', authenticate, async (req, res) => {
     const cleanName = path.basename(filename, ext).replace(/[^a-zA-Z0-9]/g, '_');
     const filenameUnique = `${otId}_${Date.now()}_${cleanName}${ext}`;
     
-    let storedIdentifier = filenameUnique;
-    let uploadSuccess = false;
-
-    // 1. Intentar subir a la carpeta específica de Google Drive si la OT la tiene
-    try {
-      const otRecord = await get('SELECT drive_folder_url FROM ordenes_trabajo WHERE id = ?', [otId]);
-      if (otRecord && otRecord.drive_folder_url) {
-        const folderIdMatch = otRecord.drive_folder_url.match(/\/folders\/([a-zA-Z0-9-_]+)/);
-        const folderId = folderIdMatch ? folderIdMatch[1] : null;
-        if (folderId) {
-          console.log(`Subiendo archivo a la carpeta de Drive de la OT: ${folderId}`);
-          const driveFileUrl = await uploadFileToDrive(folderId, filename, filetype, buffer);
-          if (driveFileUrl) {
-            storedIdentifier = driveFileUrl;
-            uploadSuccess = true;
-            console.log(`Archivo subido con éxito a Google Drive: ${driveFileUrl}`);
-          }
-        }
-      }
-    } catch (driveErr) {
-      console.error('Error al intentar subir archivo a Google Drive (fallando a almacenamiento por defecto):', driveErr.message || driveErr);
+    // Obtener información de la OT para verificar o crear su subcarpeta en Google Drive
+    const otRecord = await get('SELECT drive_folder_url, cliente_id FROM ordenes_trabajo WHERE id = ?', [otId]);
+    if (!otRecord) {
+      return res.status(404).json({ error: 'Orden de Trabajo no encontrada' });
     }
 
-    // 2. Si no se subió a Drive, usar el almacenamiento tradicional (Supabase o local) como fallback
-    if (!uploadSuccess) {
-      if (supabase) {
-        // Subir a Supabase Storage Bucket
-        const { data, error } = await supabase.storage
-          .from('trimec-archivos')
-          .upload(filenameUnique, buffer, {
-            contentType: filetype,
-            duplex: 'half'
-          });
-        if (error) {
-          throw error;
-        }
-        
-        const { data: urlData } = supabase.storage
-          .from('trimec-archivos')
-          .getPublicUrl(filenameUnique);
-          
-        storedIdentifier = urlData.publicUrl;
-      } else {
-        const filePath = path.join(__dirname, 'uploads', filenameUnique);
-        if (!fs.existsSync(path.dirname(filePath))) {
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        }
-        fs.writeFileSync(filePath, buffer);
+    let folderUrl = otRecord.drive_folder_url;
+    let folderId = null;
+
+    if (folderUrl) {
+      const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+      folderId = match ? match[1] : null;
+    }
+
+    // Si la OT no tiene aún subcarpeta privada en Google Drive, crearla y vincularla automáticamente
+    if (!folderId) {
+      const clientRecord = await get('SELECT razon_social FROM clientes WHERE id = ?', [otRecord.cliente_id]);
+      const clientName = clientRecord ? clientRecord.razon_social : '';
+      const folderName = `OT ${otId} - ${clientName}`.trim();
+      
+      console.log(`OT ${otId} no tiene subcarpeta en Google Drive. Creando y vinculando carpeta "${folderName}"...`);
+      folderUrl = await createDriveFolder(folderName);
+      if (folderUrl) {
+        await run('UPDATE ordenes_trabajo SET drive_folder_url = ? WHERE id = ?', [folderUrl, otId]);
+        const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+        folderId = match ? match[1] : null;
       }
+    }
+
+    if (!folderId) {
+      return res.status(500).json({ 
+        error: 'No se pudo vincular ni crear la carpeta en Google Drive para esta OT. Verifique la conexión con Google Drive.' 
+      });
+    }
+
+    // Subir el archivo directamente a la subcarpeta de Google Drive de esta OT
+    console.log(`Subiendo archivo a la carpeta de Google Drive de la OT ${otId} (Carpeta: ${folderId})...`);
+    let driveFileUrl;
+    try {
+      driveFileUrl = await uploadFileToDrive(folderId, filename, filetype, buffer);
+    } catch (uploadErr) {
+      console.error('Error al subir archivo a Google Drive:', uploadErr);
+      const isQuotaErr = (uploadErr.message || '').includes('storage quota') || (uploadErr.message || '').includes('quota');
+      const isAuthErr = (uploadErr.message || '').includes('invalid_grant') || (uploadErr.message || '').includes('credentials');
+      
+      let clientMsg = 'Error al subir el archivo a Google Drive.';
+      if (isQuotaErr) {
+        clientMsg = 'Error de cuota en Google Drive: Se requiere un token OAuth2 activo de la cuenta de Google propietaria para almacenar archivos.';
+      } else if (isAuthErr) {
+        clientMsg = 'Error de autorización en Google Drive: El token de acceso ha expirado o requiere renovación.';
+      }
+      return res.status(500).json({ error: clientMsg, details: uploadErr.message });
+    }
+
+    if (!driveFileUrl) {
+      return res.status(500).json({ error: 'No se obtuvo la URL del archivo desde Google Drive.' });
     }
     
     const now = new Date().toISOString().split('T')[0];
     await run(
       'INSERT INTO archivos_ot (ot_id, nombre_original, nombre_guardado, tipo, fecha_subida) VALUES (?, ?, ?, ?, ?)',
-      [otId, filename, storedIdentifier, filetype, now]
+      [otId, filename, driveFileUrl, filetype, now]
     );
     
-    res.status(201).json({ message: 'Archivo subido con éxito', filenameUnique, drive: uploadSuccess });
+    res.status(201).json({ 
+      message: 'Archivo subido y guardado exitosamente en Google Drive', 
+      fileUrl: driveFileUrl,
+      drive_folder_url: folderUrl,
+      drive: true 
+    });
   } catch (error) {
-    console.error('Error al subir archivo:', error);
+    console.error('Error al procesar subida de archivo:', error);
     res.status(500).json({ error: error.message });
   }
 });

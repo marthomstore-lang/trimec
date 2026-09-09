@@ -600,7 +600,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
-        await api(`/ots/${otId}/archivos`, {
+        const uploadRes = await api(`/ots/${otId}/archivos`, {
           method: 'POST',
           body: JSON.stringify({
             filename: file.name,
@@ -608,11 +608,14 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
             base64Data: reader.result
           })
         });
-        showToast('Documento subido correctamente', 'success');
+        showToast('Documento guardado en Google Drive correctamente', 'success');
+        if (uploadRes?.drive_folder_url) {
+          setOt(prev => ({ ...prev, drive_folder_url: uploadRes.drive_folder_url }));
+        }
         const updatedFiles = await api(`/ots/${otId}/archivos`);
         setFiles(updatedFiles);
       } catch (err) {
-        showToast(err.message || 'Error al subir archivo', 'danger');
+        showToast(err.message || 'Error al subir archivo a Google Drive', 'danger');
       } finally {
         setUploading(false);
       }
@@ -1229,15 +1232,24 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {files.map((file) => {
-                  const isImage = file.tipo.startsWith('image/');
+                  const isImage = file.tipo && file.tipo.startsWith('image/');
                   const fileUrl = (file.nombre_guardado && (file.nombre_guardado.startsWith('http://') || file.nombre_guardado.startsWith('https://')))
                     ? file.nombre_guardado 
                     : `${BASE_URL.replace('/api', '')}/uploads/${file.nombre_guardado}`;
+                  
+                  let thumbnailUrl = fileUrl;
+                  if (isImage && fileUrl.includes('drive.google.com')) {
+                    const match = fileUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/) || fileUrl.match(/id=([a-zA-Z0-9-_]+)/);
+                    if (match) {
+                      thumbnailUrl = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w200`;
+                    }
+                  }
+
                   return (
                     <div key={file.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--panel-border)', padding: '0.75rem', borderRadius: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
                         {isImage ? (
-                          <img src={fileUrl} alt={file.nombre_original} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--panel-border)' }} />
+                          <img src={thumbnailUrl} alt={file.nombre_original} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--panel-border)' }} onError={(e) => { e.target.style.display = 'none'; }} />
                         ) : (
                           <div style={{ width: '40px', height: '40px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
                             📄
