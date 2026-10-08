@@ -153,31 +153,6 @@ const Login = ({ onLoginSuccess }) => {
             {loading ? 'Iniciando sesión...' : 'Ingresar al Sistema'}
           </button>
         </form>
-
-        <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--panel-border)' }}>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '0.75rem', fontWeight: 600 }}>
-            ACCESO RÁPIDO PARA PRUEBAS (Contraseña: trimec123)
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              style={{ background: 'linear-gradient(135deg, #2563eb, #10b981)', border: 'none', fontWeight: 700, padding: '0.55rem' }}
-              onClick={() => handleQuickLogin('operador@trimec.cl')}
-            >
-              👷 Entrar como Técnico / Operador (OTs y Horas)
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleQuickLogin('angelo@trimec.cl')}>
-              🔑 Entrar como Angelo Muñoz (Admin)
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleQuickLogin('supervisor@trimec.cl')}>
-              🛠️ Entrar como Supervisor (Operaciones)
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleQuickLogin('contador@trimec.cl')}>
-              💼 Entrar como Contador (Finanzas)
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

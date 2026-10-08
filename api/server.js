@@ -238,7 +238,10 @@ app.delete('/api/clientes/:id', authenticate, checkRole(['admin']), async (req, 
 // Obtener todos los usuarios (solo administradores)
 app.get('/api/usuarios', authenticate, checkRole(['admin']), async (req, res) => {
   try {
-    const users = await query('SELECT id, nombre, email, rol FROM usuarios ORDER BY nombre ASC');
+    try {
+      await run("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS clave_texto TEXT DEFAULT 'trimec123'");
+    } catch (e) {}
+    const users = await query("SELECT id, nombre, email, rol, COALESCE(clave_texto, 'trimec123') as clave_texto FROM usuarios ORDER BY id ASC");
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -252,16 +255,17 @@ app.post('/api/usuarios', authenticate, checkRole(['admin']), async (req, res) =
     return res.status(400).json({ message: 'Todos los campos son obligatorios' });
   }
   try {
-    const existingUser = await get('SELECT id FROM usuarios WHERE email = ?', [email]);
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await get('SELECT id FROM usuarios WHERE email = ?', [cleanEmail]);
     if (existingUser) {
       return res.status(400).json({ message: 'El correo ya está registrado por otro usuario' });
     }
     const hashedPwd = await bcrypt.hash(password, 10);
     const result = await run(`
-      INSERT INTO usuarios (nombre, email, password_hash, rol) 
-      VALUES (?, ?, ?, ?)
-    `, [nombre, email, hashedPwd, rol]);
-    res.status(201).json({ id: result.id, nombre, email, rol });
+      INSERT INTO usuarios (nombre, email, password_hash, rol, clave_texto) 
+      VALUES (?, ?, ?, ?, ?)
+    `, [nombre.trim(), cleanEmail, hashedPwd, rol, password]);
+    res.status(201).json({ id: result.id, nombre: nombre.trim(), email: cleanEmail, rol, clave_texto: password });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -275,25 +279,26 @@ app.put('/api/usuarios/:id', authenticate, checkRole(['admin']), async (req, res
     return res.status(400).json({ message: 'Nombre, email y rol son obligatorios' });
   }
   try {
-    const existingUser = await get('SELECT id FROM usuarios WHERE email = ? AND id != ?', [email, id]);
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await get('SELECT id FROM usuarios WHERE email = ? AND id != ?', [cleanEmail, id]);
     if (existingUser) {
       return res.status(400).json({ message: 'El correo ya está registrado por otro usuario' });
     }
     if (password && password.trim() !== '') {
-      const hashedPwd = await bcrypt.hash(password, 10);
+      const hashedPwd = await bcrypt.hash(password.trim(), 10);
       await run(`
         UPDATE usuarios 
-        SET nombre = ?, email = ?, password_hash = ?, rol = ? 
+        SET nombre = ?, email = ?, password_hash = ?, rol = ?, clave_texto = ? 
         WHERE id = ?
-      `, [nombre, email, hashedPwd, rol, id]);
+      `, [nombre.trim(), cleanEmail, hashedPwd, rol, password.trim(), id]);
     } else {
       await run(`
         UPDATE usuarios 
         SET nombre = ?, email = ?, rol = ? 
         WHERE id = ?
-      `, [nombre, email, rol, id]);
+      `, [nombre.trim(), cleanEmail, rol, id]);
     }
-    res.json({ id: parseInt(id), nombre, email, rol });
+    res.json({ id: parseInt(id), nombre: nombre.trim(), email: cleanEmail, rol });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

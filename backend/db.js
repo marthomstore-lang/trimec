@@ -700,6 +700,11 @@ export const initDb = async () => {
   try {
     await run('ALTER TABLE facturacion ADD COLUMN IF NOT EXISTS fecha_pago TEXT');
   } catch (e) {}
+
+  try {
+    await run("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS clave_texto TEXT DEFAULT 'trimec123'");
+    await run("UPDATE usuarios SET clave_texto = 'trimec123' WHERE clave_texto IS NULL OR clave_texto = ''");
+  } catch (e) {}
 };
 
 const db = isPostgres ? pgPool : dbSqlite;

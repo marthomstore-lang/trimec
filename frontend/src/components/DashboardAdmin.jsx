@@ -193,7 +193,9 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [selectedUserIdToEdit, setSelectedUserIdToEdit] = useState('');
-  const [newUserProfile, setNewUserProfile] = useState({ nombre: '', email: '', password: '', rol: 'supervisor' });
+  const [newUserProfile, setNewUserProfile] = useState({ nombre: '', email: '', password: '', rol: 'operador' });
+  const [showFormPassword, setShowFormPassword] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState({});
 
   // Inventario States
   const [inventario, setInventario] = useState([]);
@@ -476,27 +478,28 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
   const handleOpenUserModal = async () => {
     setShowUserModal(true);
     setSelectedUserIdToEdit('');
-    setNewUserProfile({ nombre: '', email: '', password: '', rol: 'supervisor' });
+    setNewUserProfile({ nombre: '', email: '', password: '', rol: 'operador' });
+    setShowFormPassword(false);
     try {
       const data = await api('/usuarios');
-      setUsersList(data);
+      setUsersList(Array.isArray(data) ? data : []);
     } catch (err) {
       showToast('Error al cargar la lista de usuarios', 'danger');
     }
   };
 
   const handleUserSelectChange = (userId) => {
-    setSelectedUserIdToEdit(userId);
-    if (userId === '') {
-      setNewUserProfile({ nombre: '', email: '', password: '', rol: 'supervisor' });
+    setSelectedUserIdToEdit(userId ? String(userId) : '');
+    if (!userId) {
+      setNewUserProfile({ nombre: '', email: '', password: '', rol: 'operador' });
     } else {
-      const selected = usersList.find(u => u.id === parseInt(userId));
+      const selected = usersList.find(u => u.id === parseInt(userId, 10));
       if (selected) {
         setNewUserProfile({
           nombre: selected.nombre || '',
           email: selected.email || '',
-          password: '',
-          rol: selected.rol || 'supervisor'
+          password: selected.clave_texto || '',
+          rol: selected.rol || 'operador'
         });
       }
     }
@@ -510,15 +513,18 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
           method: 'POST',
           body: JSON.stringify(newUserProfile)
         });
-        showToast('Perfil de usuario creado con éxito', 'success');
+        showToast('✅ Usuario creado con éxito', 'success');
       } else {
         await api(`/usuarios/${selectedUserIdToEdit}`, {
           method: 'PUT',
           body: JSON.stringify(newUserProfile)
         });
-        showToast('Perfil de usuario actualizado con éxito', 'success');
+        showToast('✅ Usuario actualizado con éxito', 'success');
       }
-      setShowUserModal(false);
+      const data = await api('/usuarios');
+      setUsersList(Array.isArray(data) ? data : []);
+      setSelectedUserIdToEdit('');
+      setNewUserProfile({ nombre: '', email: '', password: '', rol: 'operador' });
     } catch (err) {
       showToast(err.message || 'Error al guardar usuario', 'danger');
     }
@@ -531,8 +537,13 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       onConfirm: async () => {
         try {
           await api(`/usuarios/${userId}`, { method: 'DELETE' });
-          showToast('Perfil de usuario eliminado', 'success');
-          setShowUserModal(false);
+          showToast('🗑️ Perfil de usuario eliminado', 'success');
+          const data = await api('/usuarios');
+          setUsersList(Array.isArray(data) ? data : []);
+          if (String(selectedUserIdToEdit) === String(userId)) {
+            setSelectedUserIdToEdit('');
+            setNewUserProfile({ nombre: '', email: '', password: '', rol: 'operador' });
+          }
         } catch (err) {
           showToast(err.message || 'Error al eliminar usuario', 'danger');
         }
@@ -1810,58 +1821,267 @@ const DashboardAdmin = ({ onSelectOt, showToast }) => {
       {/* MODAL: GESTIONAR USUARIOS DE ACCESO */}
       {showUserModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>{selectedUserIdToEdit === '' ? 'Crear Nuevo Perfil' : 'Editar Perfil de Acceso'}</h3>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowUserModal(false)}>Cerrar</button>
-            </div>
-            
-            <div className="form-group" style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
-              <label style={{ fontWeight: 600 }}>Seleccionar Perfil para Editar</label>
-              <select className="form-control mt-2" value={selectedUserIdToEdit} onChange={(e) => handleUserSelectChange(e.target.value)}>
-                <option value="">-- [ Nuevo Perfil / Cuenta ] --</option>
-                {usersList.map(u => <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>)}
-              </select>
+          <div className="modal-content" style={{ maxWidth: '980px', width: '96%', maxHeight: '92vh', overflowY: 'auto' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.85rem', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  👥 Usuarios Aceptados y Claves de Acceso
+                </h3>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
+                  Administra quiénes pueden entrar al sistema, consulta sus claves y define qué pantallas puede ver cada perfil.
+                </p>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowUserModal(false)}>✕ Cerrar</button>
             </div>
 
-            <form onSubmit={handleSaveUser}>
-              <div className="form-group">
-                <label>Nombre del Usuario</label>
-                <input type="text" className="form-control" placeholder="Ej: Angelo Muñoz V." value={newUserProfile.nombre} onChange={(e) => setNewUserProfile({ ...newUserProfile, nombre: e.target.value })} required />
+            {/* RESUMEN DE ROLES Y PERMISOS */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: '0.65rem', marginBottom: '1.25rem' }}>
+              <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.28)', borderRadius: '0.65rem', padding: '0.65rem 0.8rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#60a5fa', marginBottom: '0.2rem' }}>👑 Administrador (admin)</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                  Control total: OTs, presupuestos, finanzas, clientes, bodega, personal y usuarios.
+                </div>
               </div>
-              <div className="form-group">
-                <label>Correo Electrónico (Email de Acceso)</label>
-                <input type="email" className="form-control" placeholder="Ej: angelo@trimec.cl" value={newUserProfile.email} onChange={(e) => setNewUserProfile({ ...newUserProfile, email: e.target.value })} required />
+              <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.28)', borderRadius: '0.65rem', padding: '0.65rem 0.8rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#fbbf24', marginBottom: '0.2rem' }}>🛠️ Supervisor (supervisor)</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                  Gestión operativa: OTs, imputación de HH, compras, traslados e informes técnicos.
+                </div>
               </div>
-              <div className="form-group">
-                <label>Contraseña de Acceso</label>
-                <input 
-                  type="password" 
-                  className="form-control" 
-                  placeholder={selectedUserIdToEdit === '' ? 'Ingresar contraseña' : 'Dejar en blanco para no cambiar'} 
-                  value={newUserProfile.password} 
-                  onChange={(e) => setNewUserProfile({ ...newUserProfile, password: e.target.value })} 
-                  required={selectedUserIdToEdit === ''} 
-                />
+              <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.28)', borderRadius: '0.65rem', padding: '0.65rem 0.8rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#34d399', marginBottom: '0.2rem' }}>💼 Contador (contador)</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                  Control financiero: facturación SII, compras, gastos por OT y márgenes.
+                </div>
               </div>
-              <div className="form-group">
-                <label>Rol / Permisos del Perfil</label>
-                <select className="form-control" value={newUserProfile.rol} onChange={(e) => setNewUserProfile({ ...newUserProfile, rol: e.target.value })}>
-                  <option value="admin">Administrador (Acceso Total)</option>
-                  <option value="supervisor">Supervisor (Imputación HH y Gastos)</option>
-                  <option value="contador">Contador (Control Financiero y Facturas)</option>
-                </select>
+              <div style={{ background: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.28)', borderRadius: '0.65rem', padding: '0.65rem 0.8rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#22d3ee', marginBottom: '0.2rem' }}>👷 Técnico / Operador (operador)</div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                  Solo ve las OTs activas, llena la Ficha de Intervención Técnica y carga sus Horas (HH) del día.
+                </div>
               </div>
-              
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem' }}>
-                {selectedUserIdToEdit === '' ? 'Crear Perfil de Usuario' : 'Guardar Cambios'}
-              </button>
-              {selectedUserIdToEdit !== '' && (
-                <button type="button" className="btn btn-danger" style={{ width: '100%', marginTop: '0.5rem' }} onClick={() => handleDeleteUser(selectedUserIdToEdit)}>
-                  🗑️ Eliminar Perfil
-                </button>
-              )}
-            </form>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 1fr', gap: '1.25rem', alignItems: 'start' }}>
+              {/* TABLA DE USUARIOS ACEPTADOS */}
+              <div style={{ background: 'rgba(15, 23, 42, 0.5)', border: '1px solid var(--panel-border)', borderRadius: '0.75rem', padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                    📋 Listado de Usuarios Activos ({usersList.length})
+                  </h4>
+                  {selectedUserIdToEdit !== '' && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleUserSelectChange('')}
+                    >
+                      + Crear Nuevo Usuario
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--panel-border)', color: 'var(--text-secondary)', textAlign: 'left' }}>
+                        <th style={{ padding: '0.55rem 0.5rem' }}>Usuario / Correo</th>
+                        <th style={{ padding: '0.55rem 0.5rem' }}>Clave</th>
+                        <th style={{ padding: '0.55rem 0.5rem' }}>Rol</th>
+                        <th style={{ padding: '0.55rem 0.5rem', textAlign: 'right' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usersList.map(u => {
+                        const isSelected = String(selectedUserIdToEdit) === String(u.id);
+                        const pwdText = u.clave_texto || 'trimec123';
+                        const isPwdShown = !!visiblePasswords[u.id];
+                        const roleInfo = {
+                          admin: { label: '👑 Admin', bg: 'rgba(59, 130, 246, 0.16)', color: '#60a5fa', border: 'rgba(59, 130, 246, 0.35)' },
+                          supervisor: { label: '🛠️ Supervisor', bg: 'rgba(245, 158, 11, 0.16)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.35)' },
+                          contador: { label: '💼 Contador', bg: 'rgba(16, 185, 129, 0.16)', color: '#34d399', border: 'rgba(16, 185, 129, 0.35)' },
+                          operador: { label: '👷 Operador', bg: 'rgba(6, 182, 212, 0.16)', color: '#22d3ee', border: 'rgba(6, 182, 212, 0.35)' }
+                        }[u.rol] || { label: u.rol, bg: 'rgba(148, 163, 184, 0.16)', color: '#cbd5e1', border: 'rgba(148, 163, 184, 0.35)' };
+
+                        return (
+                          <tr
+                            key={u.id}
+                            style={{
+                              borderBottom: '1px solid rgba(255,255,255,0.06)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'transparent'
+                            }}
+                          >
+                            <td style={{ padding: '0.65rem 0.5rem' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.nombre}</div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{u.email}</div>
+                            </td>
+                            <td style={{ padding: '0.65rem 0.5rem' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.45rem', borderRadius: '0.35rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600, color: isPwdShown ? '#38bdf8' : 'var(--text-secondary)' }}>
+                                  {isPwdShown ? pwdText : '••••••••'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setVisiblePasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.85rem' }}
+                                  title={isPwdShown ? 'Ocultar clave' : 'Ver clave'}
+                                >
+                                  {isPwdShown ? '🙈' : '👁️'}
+                                </button>
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.65rem 0.5rem' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '999px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: roleInfo.bg,
+                                color: roleInfo.color,
+                                border: `1px solid ${roleInfo.border}`
+                              }}>
+                                {roleInfo.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.65rem 0.5rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', marginRight: '0.35rem' }}
+                                title="Copiar datos de acceso para WhatsApp"
+                                onClick={() => {
+                                  const linkUrl = u.rol === 'operador' ? `${window.location.origin}/?portal=operador` : window.location.origin;
+                                  const text = `🔑 *Acceso TRIMEC ERP*\n👤 Usuario: ${u.nombre}\n📧 Correo: ${u.email}\n🔒 Clave: ${pwdText}\n🌐 Link: ${linkUrl}`;
+                                  navigator.clipboard.writeText(text);
+                                  showToast(`📋 Credenciales de ${u.nombre} copiadas`, 'success');
+                                }}
+                              >
+                                📋 Copiar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderColor: isSelected ? '#3b82f6' : undefined }}
+                                onClick={() => handleUserSelectChange(u.id)}
+                              >
+                                ✏️ Editar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* FORMULARIO CREAR / EDITAR USUARIO */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '0.75rem', padding: '1.15rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', color: selectedUserIdToEdit === '' ? '#38bdf8' : '#fbbf24' }}>
+                    {selectedUserIdToEdit === '' ? '➕ Crear Nuevo Usuario' : '✏️ Editando Usuario Seleccionado'}
+                  </h4>
+                  {selectedUserIdToEdit !== '' && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>ID #{selectedUserIdToEdit}</span>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveUser}>
+                  <div className="form-group">
+                    <label>Nombre Completo / Identificación</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Ej: Christian (Mecánico)"
+                      value={newUserProfile.nombre}
+                      onChange={(e) => setNewUserProfile({ ...newUserProfile, nombre: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Correo Electrónico (Usuario de Acceso)</label>
+                    <input
+                      type="email"
+                      className="form-control"
+                      placeholder="Ej: christian@trimec.cl"
+                      value={newUserProfile.email}
+                      onChange={(e) => setNewUserProfile({ ...newUserProfile, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Clave / Contraseña de Acceso</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showFormPassword ? 'text' : 'password'}
+                        className="form-control"
+                        style={{ paddingRight: '2.5rem', fontFamily: showFormPassword ? 'monospace' : 'inherit' }}
+                        placeholder={selectedUserIdToEdit === '' ? 'Ingresar contraseña (ej: trimec123)' : 'Escribe nueva clave para cambiarla'}
+                        value={newUserProfile.password}
+                        onChange={(e) => setNewUserProfile({ ...newUserProfile, password: e.target.value })}
+                        required={selectedUserIdToEdit === ''}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowFormPassword(!showFormPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '0.65rem',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '1.05rem',
+                          padding: 0
+                        }}
+                        title={showFormPassword ? 'Ocultar clave' : 'Mostrar clave'}
+                      >
+                        {showFormPassword ? '🙈' : '👁️'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Rol / Nivel de Acceso en el Sistema</label>
+                    <select
+                      className="form-control"
+                      value={newUserProfile.rol}
+                      onChange={(e) => setNewUserProfile({ ...newUserProfile, rol: e.target.value })}
+                    >
+                      <option value="operador">👷 Técnico / Operador (Solo OTs, Ficha Técnica y Horas HH)</option>
+                      <option value="supervisor">🛠️ Supervisor (Operaciones, HH, Gastos e Informes)</option>
+                      <option value="contador">💼 Contador (Control Financiero y Facturación SII)</option>
+                      <option value="admin">👑 Administrador (Acceso Total al ERP)</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem', fontWeight: 700 }}>
+                    {selectedUserIdToEdit === '' ? '✅ Crear Usuario' : '💾 Guardar Cambios del Usuario'}
+                  </button>
+
+                  {selectedUserIdToEdit !== '' && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ flex: 1 }}
+                        onClick={() => handleUserSelectChange('')}
+                      >
+                        Cancelar Edición
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        style={{ flex: 1 }}
+                        onClick={() => handleDeleteUser(selectedUserIdToEdit)}
+                      >
+                        🗑️ Eliminar Usuario
+                      </button>
+                    </div>
+                  )}
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       )}
