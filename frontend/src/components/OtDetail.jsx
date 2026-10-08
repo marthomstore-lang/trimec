@@ -780,6 +780,50 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
 
   const semDetail = getOtSemaforoDetail(ot);
 
+  // Vista exclusiva para Técnicos / Operadores: solo ven la OT y las opciones de la Ficha de Mantención + Horas del Día
+  if (userRole === 'operador') {
+    return (
+      <div className="dashboard-container" style={{ maxWidth: '1050px', margin: '0 auto' }}>
+        <div className="panel-card" style={{
+          padding: '1.25rem',
+          marginBottom: '1.25rem',
+          borderLeft: '4px solid #3b82f6',
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95))'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#60a5fa' }}>
+                  Orden de Trabajo: OT #{ot.id}
+                </span>
+                <span className="badge badge-proceso">{ot.estado}</span>
+                {ot.es_emergencia === 1 && <span className="badge badge-sp">⚡ EMERGENCIA</span>}
+              </div>
+              <div style={{ marginTop: '0.35rem', fontSize: '0.95rem', fontWeight: 600, color: '#e2e8f0' }}>
+                🏢 Cliente: {ot.cliente_nombre}
+                {ot.faena ? ` — 📍 ${ot.faena}` : ''}
+              </div>
+              <div style={{ marginTop: '0.35rem', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                <strong>Trabajo Solicitado:</strong> "{ot.detalle}"
+              </div>
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={onBack}>
+              ← Volver a mis OTs
+            </button>
+          </div>
+        </div>
+
+        <FichaTecnicaIntervencion
+          fixedOtId={otId}
+          initialReport={informe}
+          personalList={workers}
+          showToast={showToast}
+          onSaved={() => fetchOtDetail()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-container">
       <div className="dashboard-title-bar" style={{ marginBottom: '1.5rem' }}>

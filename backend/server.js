@@ -1943,11 +1943,25 @@ app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'superviso
       const hNorm = parseFloat(hhObj.horas_normales) || 0;
       const hExt = parseFloat(hhObj.horas_extra) || 0;
       const ubic = hhObj.ubicacion || 'Terreno';
+      const fechaHh = hhObj.fecha_dia || fecha_fin || fechaOp;
+      const actDesc = `[Ficha Técnica] ${despues_tareas || 'Intervención de mantenimiento'}`.slice(0, 250);
+
       if (hNorm > 0 || hExt > 0) {
-        await run(
-          'INSERT INTO registro_hh (ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [ot_id, parseInt(tecnico_id, 10), fechaOp, hNorm, hExt, ubic, despues_tareas || 'Intervención técnica registrada']
+        const existingHh = await get(
+          `SELECT id FROM registro_hh WHERE ot_id = ? AND trabajador_id = ? AND fecha = ? AND actividad LIKE '[Ficha Técnica]%'`,
+          [ot_id, parseInt(tecnico_id, 10), fechaHh]
         );
+        if (existingHh) {
+          await run(
+            'UPDATE registro_hh SET horas_normales = ?, horas_extra = ?, ubicacion = ?, actividad = ? WHERE id = ?',
+            [hNorm, hExt, ubic, actDesc, existingHh.id]
+          );
+        } else {
+          await run(
+            'INSERT INTO registro_hh (ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [ot_id, parseInt(tecnico_id, 10), fechaHh, hNorm, hExt, ubic, actDesc]
+          );
+        }
       }
     }
 

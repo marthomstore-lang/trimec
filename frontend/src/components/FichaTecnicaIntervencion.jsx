@@ -22,13 +22,14 @@ const initialFormState = {
     estado_equipo: 'Operativo',
     tecnico_id: '',
     horas_mano_obra: {
-        horas_normales: '',
+        fecha_dia: new Date().toISOString().split('T')[0],
+        horas_normales: '8',
         horas_extra: '0',
         ubicacion: 'Terreno'
     },
-    registrar_hh_ot: false,
+    registrar_hh_ot: true,
     repuestos_consumidos: [],
-    descontar_inventario: false,
+    descontar_inventario: true,
     recomendaciones: '',
     fotos_antes: [],
     fotos_despues: [],
@@ -51,8 +52,10 @@ export default function FichaTecnicaIntervencion({
     const [personal, setPersonal] = useState(personalList);
     const [activos, setActivos] = useState([]);
     const [inventario, setInventario] = useState([]);
+    const [otHhList, setOtHhList] = useState([]);
     const [loadingReport, setLoadingReport] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [savingHhOnly, setSavingHhOnly] = useState(false);
     const [localMsg, setLocalMsg] = useState(null);
 
     const notify = (msg, type = 'info') => {
@@ -136,11 +139,16 @@ export default function FichaTecnicaIntervencion({
     };
 
     const hydrateFormFromReport = (rep) => {
+        const todayStr = new Date().toISOString().split('T')[0];
         if (!rep || !rep.id) {
             setForm({
                 ...initialFormState,
-                fecha_inicio: new Date().toISOString().split('T')[0],
-                fecha_fin: new Date().toISOString().split('T')[0]
+                fecha_inicio: todayStr,
+                fecha_fin: todayStr,
+                horas_mano_obra: {
+                    ...initialFormState.horas_mano_obra,
+                    fecha_dia: todayStr
+                }
             });
             clearCanvas();
             return;
@@ -154,9 +162,9 @@ export default function FichaTecnicaIntervencion({
 
         setForm({
             activo_identificacion: rep.activo_identificacion || '',
-            fecha_inicio: rep.fecha_inicio || new Date().toISOString().split('T')[0],
+            fecha_inicio: rep.fecha_inicio || todayStr,
             hora_inicio_ejecucion: rep.hora_inicio_ejecucion || '',
-            fecha_fin: rep.fecha_fin || new Date().toISOString().split('T')[0],
+            fecha_fin: rep.fecha_fin || todayStr,
             hora_fin_ejecucion: rep.hora_fin_ejecucion || '',
             tipo_mantenimiento: rep.tipo_mantenimiento || 'Preventivo',
             antes_condicion: rep.antes_condicion || '',
@@ -172,13 +180,14 @@ export default function FichaTecnicaIntervencion({
             estado_equipo: rep.estado_equipo || 'Operativo',
             tecnico_id: rep.tecnico_id ? String(rep.tecnico_id) : '',
             horas_mano_obra: {
-                horas_normales: parsedHh.horas_normales !== undefined ? String(parsedHh.horas_normales) : '',
+                fecha_dia: parsedHh.fecha_dia || todayStr,
+                horas_normales: parsedHh.horas_normales !== undefined ? String(parsedHh.horas_normales) : '8',
                 horas_extra: parsedHh.horas_extra !== undefined ? String(parsedHh.horas_extra) : '0',
                 ubicacion: parsedHh.ubicacion || 'Terreno'
             },
-            registrar_hh_ot: false,
+            registrar_hh_ot: true,
             repuestos_consumidos: Array.isArray(parsedRepuestos) ? parsedRepuestos : [],
-            descontar_inventario: false,
+            descontar_inventario: true,
             recomendaciones: rep.recomendaciones || '',
             fotos_antes: Array.isArray(parsedFotosAntes) ? parsedFotosAntes : [],
             fotos_despues: Array.isArray(parsedFotosDespues) ? parsedFotosDespues : [],
@@ -188,7 +197,27 @@ export default function FichaTecnicaIntervencion({
         });
     };
 
+    const loadOtHh = async (otIdToLoad) => {
+        if (!otIdToLoad) {
+            setOtHhList([]);
+            return;
+        }
+        try {
+            const hhData = await api(`/hh/ot/${otIdToLoad}`);
+            setOtHhList(Array.isArray(hhData) ? hhData : []);
+        } catch {
+            setOtHhList([]);
+        }
+    };
+
     useEffect(() => {
+        const targetId = fixedOtId || selectedOtId;
+        if (targetId) {
+            loadOtHh(targetId);
+        } else {
+            setOtHhList([]);
+        }
+
         if (initialReport && fixedOtId) {
             hydrateFormFromReport(initialReport);
             return;
@@ -214,7 +243,7 @@ export default function FichaTecnicaIntervencion({
             }
         };
         fetchExistingReport();
-    }, [selectedOtId, initialReport]);
+    }, [selectedOtId, initialReport, fixedOtId]);
 
     // Auto-calculate hours when start and end time are entered
     useEffect(() => {
@@ -411,6 +440,61 @@ export default function FichaTecnicaIntervencion({
         setForm(prev => ({ ...prev, firma_digital: '' }));
     };
 
+    const handleRegisterDailyHhOnly = async () => {
+        const targetOtId = fixedOtId || selectedOtId;
+        if (!targetOtId) {
+            notify('Primero seleccione la Orden de Trabajo (OT)', 'warning');
+            return;
+        }
+        if (!form.tecnico_id) {
+            notify('Seleccione el Técnico que trabajó las horas', 'warning');
+            return;
+        }
+        const hNorm = parseFloat(form.horas_mano_obra.horas_normales) || 0;
+        const hExt = parseFloat(form.horas_mano_obra.horas_extra) || 0;
+        if (hNorm <= 0 && hExt <= 0) {
+            notify('Ingrese la cantidad de horas trabajadas en el día', 'warning');
+            return;
+        }
+
+        const hhPayload = {
+            ot_id: targetOtId,
+            trabajador_id: parseInt(form.tecnico_id, 10),
+            fecha: form.horas_mano_obra.fecha_dia || form.fecha_fin || new Date().toISOString().split('T')[0],
+            horas_normales: hNorm,
+            horas_extra: hExt,
+            ubicacion: form.horas_mano_obra.ubicacion || 'Terreno',
+            actividad: form.despues_tareas?.trim()
+                ? `[Ficha Técnica] ${form.despues_tareas.trim()}`
+                : `[Ficha Técnica] ${form.tipo_mantenimiento} - ${form.activo_identificacion || 'Intervención en OT'}`
+        };
+
+        setSavingHhOnly(true);
+        try {
+            if (!navigator.onLine) {
+                await saveOfflineItem({
+                    type: 'HH',
+                    endpoint: '/hh',
+                    method: 'POST',
+                    payload: hhPayload,
+                    label: `Horas del Día (${hNorm}h N / ${hExt}h E) - OT #${targetOtId}`
+                });
+                notify('📦 Sin señal: Horas del día guardadas localmente para sincronizar.', 'info');
+            } else {
+                await api('/hh', {
+                    method: 'POST',
+                    body: JSON.stringify(hhPayload)
+                });
+                notify('⏱️ Horas trabajadas del día registradas exitosamente en la OT', 'success');
+                await loadOtHh(targetOtId);
+            }
+        } catch (err) {
+            notify('Error al registrar horas: ' + err.message, 'error');
+        } finally {
+            setSavingHhOnly(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const targetOtId = fixedOtId || selectedOtId;
@@ -438,7 +522,7 @@ export default function FichaTecnicaIntervencion({
                     payload,
                     label: `Ficha Técnica OT #${targetOtId} (${form.tipo_mantenimiento} - ${form.estado_equipo})`
                 });
-                notify('📦 Sin señal: Ficha Técnica guardada en el teléfono para sincronizar luego.', 'info');
+                notify('📦 Sin señal: Ficha Técnica y Horas guardadas en el teléfono para sincronizar luego.', 'info');
                 if (onSaved) onSaved(payload);
                 setSaving(false);
                 return;
@@ -449,10 +533,11 @@ export default function FichaTecnicaIntervencion({
                 body: JSON.stringify(payload)
             });
 
-            notify('✅ Ficha Técnica y respaldo fotográfico en Google Drive guardados con éxito', 'success');
+            notify('✅ Informe de Mantención, Horas Trabajadas del Día y Fotos en Drive guardados con éxito', 'success');
             if (data && data.report) {
                 hydrateFormFromReport(data.report);
             }
+            await loadOtHh(targetOtId);
             if (onSaved) onSaved((data && data.report) || payload);
         } catch (error) {
             await saveOfflineItem({
@@ -945,22 +1030,29 @@ export default function FichaTecnicaIntervencion({
                 </h4>
 
                 {/* 3.1 Horas de Mano de Obra */}
-                <div style={{ background: 'rgba(0,0,0,0.18)', padding: '1rem', borderRadius: '10px', marginBottom: '1rem' }}>
+                <div style={{ background: 'rgba(0,0,0,0.18)', padding: '1rem', borderRadius: '10px', marginBottom: '1rem', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                        <strong style={{ color: '#e2e8f0', fontSize: '0.92rem' }}>⏱️ Horas de Mano de Obra</strong>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: '#60a5fa', cursor: 'pointer' }}>
+                        <div>
+                            <strong style={{ color: '#e2e8f0', fontSize: '0.95rem', display: 'block' }}>
+                                ⏱️ Horas de Mano de Obra (Horas Trabajadas del Día en esta OT)
+                            </strong>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                Al guardar la ficha, estas horas quedan imputadas automáticamente en la OT para el técnico seleccionado.
+                            </span>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: '#60a5fa', cursor: 'pointer', fontWeight: 600 }}>
                             <input
                                 type="checkbox"
                                 checked={form.registrar_hh_ot}
                                 onChange={e => setForm({ ...form, registrar_hh_ot: e.target.checked })}
                             />
-                            Imputar automáticamente estas horas al costo HH de la OT
+                            Imputar automáticamente estas horas a la OT
                         </label>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', alignItems: 'flex-end' }}>
                         <div>
-                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Técnico Responsable</label>
+                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Técnico Ejecutor *</label>
                             <select
                                 className="form-input"
                                 value={form.tecnico_id}
@@ -973,13 +1065,25 @@ export default function FichaTecnicaIntervencion({
                             </select>
                         </div>
                         <div>
-                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Horas Normales Invertidas</label>
+                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Fecha del Día Trabajado</label>
+                            <input
+                                type="date"
+                                className="form-input"
+                                value={form.horas_mano_obra.fecha_dia || form.fecha_fin}
+                                onChange={e => setForm({
+                                    ...form,
+                                    horas_mano_obra: { ...form.horas_mano_obra, fecha_dia: e.target.value }
+                                })}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Horas Normales del Día</label>
                             <input
                                 type="number"
                                 step="0.5"
                                 min="0"
                                 className="form-input"
-                                placeholder="Ej: 4.5"
+                                placeholder="Ej: 8"
                                 value={form.horas_mano_obra.horas_normales}
                                 onChange={e => setForm({
                                     ...form,
@@ -1016,7 +1120,53 @@ export default function FichaTecnicaIntervencion({
                                 <option value="Taller">Taller Trimec</option>
                             </select>
                         </div>
+                        <div>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                disabled={savingHhOnly}
+                                onClick={handleRegisterDailyHhOnly}
+                                style={{ width: '100%', padding: '0.55rem 0.75rem', fontSize: '0.8rem', borderColor: '#3b82f6', color: '#60a5fa' }}
+                                title="Permite agregar una jornada adicional de horas a esta OT sin cerrar la ficha"
+                            >
+                                {savingHhOnly ? 'Guardando...' : '➕ Agregar Jornada a la OT'}
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Listado de horas ya cargadas en esta OT */}
+                    {otHhList.length > 0 && (
+                        <div style={{ marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.4rem' }}>
+                                📋 Horas trabajadas ya registradas en esta OT ({otHhList.length} jornada{otHhList.length === 1 ? '' : 's'}):
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '140px', overflowY: 'auto' }}>
+                                {otHhList.map(h => (
+                                    <div
+                                        key={h.id}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            flexWrap: 'wrap',
+                                            gap: '0.5rem',
+                                            background: 'rgba(255,255,255,0.03)',
+                                            padding: '0.35rem 0.65rem',
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem'
+                                        }}
+                                    >
+                                        <span>
+                                            📅 <strong>{h.fecha}</strong> — 👷 <strong>{h.trabajador_nombre}</strong> ({h.ubicacion || 'Terreno'})
+                                        </span>
+                                        <span style={{ color: '#34d399', fontWeight: 700 }}>
+                                            {h.horas_normales}h Normales {parseFloat(h.horas_extra) > 0 ? `+ ${h.horas_extra}h Extra` : ''}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* 3.2 Repuestos y Materiales Consumidos */}

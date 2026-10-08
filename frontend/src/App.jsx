@@ -184,18 +184,20 @@ function App() {
           TRIMEC ERP
         </div>
         <div className="nav-user">
-          <button 
-            className="btn btn-primary btn-sm" 
-            style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', padding: '0.3rem 0.6rem', fontSize: '0.85rem' }} 
-            onClick={handleToggleTerreno}
-          >
-            {showModuloTerreno ? '📊 Ver Dashboard' : '📱 Terreno (Offline & Km)'}
-          </button>
+          {user.rol !== 'operador' && (
+            <button 
+              className="btn btn-primary btn-sm" 
+              style={{ backgroundColor: '#0284c7', borderColor: '#0284c7', padding: '0.3rem 0.6rem', fontSize: '0.85rem' }} 
+              onClick={handleToggleTerreno}
+            >
+              {showModuloTerreno ? '📊 Ver Dashboard' : '📱 Terreno (Offline & Km)'}
+            </button>
+          )}
           <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
             Conectado como: <strong>{user.nombre}</strong>
           </span>
           <span className={`user-badge ${user.rol}`}>
-            {user.rol === 'admin' ? 'Administrador' : user.rol === 'supervisor' ? 'Supervisor' : user.rol === 'contador' ? 'Contador' : 'Operador'}
+            {user.rol === 'admin' ? 'Administrador' : user.rol === 'supervisor' ? 'Supervisor' : user.rol === 'contador' ? 'Contador' : 'Técnico / Operador'}
           </span>
           <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
             Cerrar Sesión
@@ -205,7 +207,12 @@ function App() {
 
       {/* DASHBOARD OR DETAIL ROUTER */}
       <main style={{ flex: 1, padding: '1.5rem 1rem' }}>
-        {showModuloTerreno ? (
+        {user.rol === 'operador' ? (
+          <DashboardOperador
+            initialOtId={selectedOtId || terrenoOtId}
+            showToast={showToast}
+          />
+        ) : showModuloTerreno ? (
           <ModuloTerrenoOffline 
             initialOtId={terrenoOtId}
             onBack={() => handleToggleTerreno()} 
@@ -229,9 +236,6 @@ function App() {
             )}
             {user.rol === 'contador' && (
               <DashboardContador onSelectOt={handleSelectOt} showToast={showToast} />
-            )}
-            {user.rol === 'operador' && (
-              <DashboardOperador showToast={showToast} />
             )}
           </>
         )}
