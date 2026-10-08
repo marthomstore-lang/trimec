@@ -435,19 +435,51 @@ export const generateTechnicalReportPDF = (ot, client, report, { travelList = []
 
   currentY += 36;
 
-  // --- BITÁCORA DE EJECUCIÓN (HORARIOS EN FAENA) ---
-  if (report && (report.hora_inicio_ejecucion || report.hora_fin_ejecucion)) {
-    checkPageOverflow(40);
-    doc.rect(40, currentY, 530, 32).strokeColor(borderGray).lineWidth(0.8).stroke();
+  // --- DATOS DE IDENTIFICACIÓN Y ESTADO DEL EQUIPO ---
+  if (report) {
+    checkPageOverflow(58);
+    doc.rect(40, currentY, 530, 52).strokeColor(borderGray).lineWidth(0.8).stroke();
     doc.rect(40, currentY, 530, 12).fill(headerBg);
-    doc.fillColor(black).fontSize(8).text('REGISTRO DE HORAS EN FAENA', 40, currentY + 2, { align: 'center', width: 530, bold: true });
-    
-    const hY = currentY + 16;
+    doc.fillColor(black).fontSize(8).text('DATOS DE IDENTIFICACIÓN Y ESTADO DE INTERVENCIÓN', 40, currentY + 2, { align: 'center', width: 530, bold: true });
+
+    const idY = currentY + 16;
+    const fIni = [report.fecha_inicio, report.hora_inicio_ejecucion].filter(Boolean).join(' ') || '-';
+    const fFin = [report.fecha_fin, report.hora_fin_ejecucion].filter(Boolean).join(' ') || '-';
     doc.fontSize(7.5)
-      .text(`Hora de Inicio de Ejecución: ${report.hora_inicio_ejecucion || '-'}`, 50, hY)
-      .text(`Hora de Término de Ejecución: ${report.hora_fin_ejecucion || '-'}`, 300, hY);
-    
-    currentY += 38;
+      .text(`Activo / Equipo Intervenido: ${report.activo_identificacion || 'No especificado'}`, 48, idY, { width: 250 })
+      .text(`Tipo de Mantenimiento: ${report.tipo_mantenimiento || 'Correctivo (Avería)'}`, 310, idY, { width: 250 })
+      .text(`Inicio Intervención: ${fIni}`, 48, idY + 11, { width: 250 })
+      .text(`Término Intervención: ${fFin}`, 310, idY + 11, { width: 250 })
+      .text(`Estado Final del Equipo: ${report.estado_equipo || 'Operativo'}`, 48, idY + 22, { width: 250 })
+      .text(`Causa Raíz / Cód. Falla: ${report.causa_raiz || 'N/A'}`, 310, idY + 22, { width: 250 });
+
+    currentY += 58;
+  }
+
+  // --- LECTURAS DE PARÁMETROS CUANTITATIVOS ---
+  if (report && report.lecturas_parametros) {
+    let paramsObj = {};
+    try {
+      paramsObj = typeof report.lecturas_parametros === 'string' ? JSON.parse(report.lecturas_parametros) : (report.lecturas_parametros || {});
+    } catch (e) {}
+    const hasParams = paramsObj.temperatura || paramsObj.vibracion || paramsObj.presion || paramsObj.voltaje || paramsObj.otros;
+    if (hasParams) {
+      checkPageOverflow(42);
+      doc.rect(40, currentY, 530, 34).strokeColor(borderGray).lineWidth(0.8).stroke();
+      doc.rect(40, currentY, 530, 12).fill(headerBg);
+      doc.fillColor(black).fontSize(8).text('LECTURAS DE PARÁMETROS TÉCNICOS', 40, currentY + 2, { align: 'center', width: 530, bold: true });
+
+      const pY2 = currentY + 17;
+      doc.fontSize(7.5)
+        .text(`Temperatura: ${paramsObj.temperatura || '-'}`, 48, pY2)
+        .text(`Vibración: ${paramsObj.vibracion || '-'}`, 175, pY2)
+        .text(`Presión: ${paramsObj.presion || '-'}`, 300, pY2)
+        .text(`Voltaje/Corriente: ${paramsObj.voltaje || '-'}`, 420, pY2);
+      if (paramsObj.otros) {
+        doc.fontSize(7).text(`Otros parámetros: ${paramsObj.otros}`, 48, pY2 + 9);
+      }
+      currentY += 40;
+    }
   }
 
   // --- BITÁCORA DE TRASLADOS Y VEHÍCULO ---
@@ -487,26 +519,57 @@ export const generateTechnicalReportPDF = (ot, client, report, { travelList = []
       currentY += 11;
     });
 
-    currentY += 4;
+    currentY += 8;
   }
 
   // --- TRABAJO EJECUTADO ---
   if (report) {
     checkPageOverflow(40);
-    doc.fillColor(black).fontSize(8.5).text('1. CONDICIÓN INICIAL / ANTECEDENTES:', 40, currentY, { bold: true });
+    doc.fillColor(black).fontSize(8.5).text('1. CONDICIÓN INICIAL / DIAGNÓSTICO (ANTES):', 40, currentY, { bold: true });
     doc.fontSize(7.5).text(report.antes_condicion || 'No especificado.', 40, currentY + 12, { width: 530 });
     const hAntes = doc.heightOfString(report.antes_condicion || '', { width: 530 }) + 20;
     currentY += hAntes;
 
     checkPageOverflow(40);
-    doc.fillColor(black).fontSize(8.5).text('2. TAREAS EJECUTADAS / SOLUCIÓN:', 40, currentY, { bold: true });
+    doc.fillColor(black).fontSize(8.5).text('2. DESCRIPCIÓN DE LA ACTIVIDAD / ACCIONES REALIZADAS (DESPUÉS):', 40, currentY, { bold: true });
     doc.fontSize(7.5).text(report.despues_tareas || 'No especificado.', 40, currentY + 12, { width: 530 });
     const hDesp = doc.heightOfString(report.despues_tareas || '', { width: 530 }) + 20;
     currentY += hDesp;
 
+    // --- REPUESTOS Y MATERIALES CONSUMIDOS ---
+    let repList = [];
+    try {
+      repList = typeof report.repuestos_consumidos === 'string' ? JSON.parse(report.repuestos_consumidos) : (report.repuestos_consumidos || []);
+    } catch (e) {}
+    if (Array.isArray(repList) && repList.length > 0) {
+      checkPageOverflow(40);
+      doc.rect(40, currentY, 530, 12).fill(headerBg);
+      doc.fillColor(black).fontSize(8).text('3. REPUESTOS Y MATERIALES CONSUMIDOS', 45, currentY + 2, { bold: true });
+      currentY += 12;
+      doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
+      doc.fontSize(7)
+        .text('Código / SKU', 45, currentY + 2, { width: 90 })
+        .text('Descripción de Pieza / Material / Lubricante', 140, currentY + 2, { width: 280 })
+        .text('Cantidad', 430, currentY + 2, { width: 60, align: 'center' })
+        .text('Unidad', 495, currentY + 2, { width: 65, align: 'center' });
+      currentY += 11;
+
+      repList.forEach(r => {
+        checkPageOverflow(12);
+        doc.rect(40, currentY, 530, 11).strokeColor(borderGray).stroke();
+        doc.fontSize(7)
+          .text(r.sku || 'S/C', 45, currentY + 2, { width: 90 })
+          .text(r.descripcion || '-', 140, currentY + 2, { width: 280 })
+          .text(String(r.cantidad || 1), 430, currentY + 2, { width: 60, align: 'center' })
+          .text(r.unidad || 'UN', 495, currentY + 2, { width: 65, align: 'center' });
+        currentY += 11;
+      });
+      currentY += 10;
+    }
+
     if (report.recomendaciones) {
       checkPageOverflow(40);
-      doc.fillColor(black).fontSize(8.5).text('3. RECOMENDACIONES TÉCNICAS:', 40, currentY, { bold: true });
+      doc.fillColor(black).fontSize(8.5).text('4. OBSERVACIONES Y RECOMENDACIONES TÉCNICAS:', 40, currentY, { bold: true });
       doc.fontSize(7.5).text(report.recomendaciones || 'Sin recomendaciones.', 40, currentY + 12, { width: 530 });
       const hRec = doc.heightOfString(report.recomendaciones || '', { width: 530 }) + 20;
       currentY += hRec;
@@ -529,67 +592,71 @@ export const generateTechnicalReportPDF = (ot, client, report, { travelList = []
     }
 
     if (fotosA.length > 0 || fotosD.length > 0) {
-      doc.addPage();
-      currentY = 40;
-      doc.fillColor(black).fontSize(10).text('REGISTRO FOTOGRÁFICO', 40, currentY, { bold: true, align: 'center' });
-      currentY += 20;
+      checkPageOverflow(80);
+      doc.rect(40, currentY, 530, 12).fill(headerBg);
+      doc.fillColor(black).fontSize(8).text('RESPALDO FOTOGRÁFICO (ANTES Y DESPUÉS)', 45, currentY + 2, { bold: true });
+      currentY += 16;
 
-      // Imprimir fotos del antes
       if (fotosA.length > 0) {
-        doc.fontSize(8.5).text('REGISTRO FOTOGRÁFICO - ANTES DEL TRABAJO', 40, currentY, { bold: true });
-        currentY += 15;
-        
-        let xOffset = 40;
+        doc.fontSize(7.5).text(`Evidencias ANTES de la intervención (${fotosA.length} archivo(s) en Google Drive):`, 45, currentY, { bold: true });
+        currentY += 11;
         fotosA.forEach((foto, idx) => {
-          doc.rect(xOffset, currentY, 150, 110).strokeColor(borderGray).stroke();
-          doc.fontSize(6).text(`Imagen Antes #${idx + 1}\nPath: ${foto}`, xOffset + 5, currentY + 50, { width: 140, align: 'center' });
-          
-          xOffset += 170;
-          if (xOffset > 500) {
-            xOffset = 40;
-            currentY += 125;
-          }
+          checkPageOverflow(12);
+          doc.fillColor('blue').fontSize(6.5).text(`• Foto Antes #${idx + 1}: ${foto}`, 55, currentY, { width: 500 });
+          currentY += 10;
         });
-        currentY += 135;
+        currentY += 4;
       }
 
-      // Imprimir fotos del después
       if (fotosD.length > 0) {
-        checkPageOverflow(150);
-        doc.fontSize(8.5).text('REGISTRO FOTOGRÁFICO - DESPUÉS DEL TRABAJO (EJECUTADO)', 40, currentY, { bold: true });
-        currentY += 15;
-
-        let xOffset = 40;
+        checkPageOverflow(25);
+        doc.fillColor(black).fontSize(7.5).text(`Evidencias DESPUÉS de la intervención (${fotosD.length} archivo(s) en Google Drive):`, 45, currentY, { bold: true });
+        currentY += 11;
         fotosD.forEach((foto, idx) => {
-          doc.rect(xOffset, currentY, 150, 110).strokeColor(borderGray).stroke();
-          doc.fontSize(6).text(`Imagen Después #${idx + 1}\nPath: ${foto}`, xOffset + 5, currentY + 50, { width: 140, align: 'center' });
-          
-          xOffset += 170;
-          if (xOffset > 500) {
-            xOffset = 40;
-            currentY += 125;
-          }
+          checkPageOverflow(12);
+          doc.fillColor('blue').fontSize(6.5).text(`• Foto Después #${idx + 1}: ${foto}`, 55, currentY, { width: 500 });
+          currentY += 10;
         });
-        currentY += 135;
+        currentY += 6;
       }
+      doc.fillColor(black);
     }
   }
 
-  // --- FIRMA ---
-  let sigY = currentY + 15;
-  if (sigY + 70 > 720) {
+  // --- FIRMAS Y CONFORMIDAD ---
+  let sigY = currentY + 20;
+  if (sigY + 85 > 720) {
     doc.addPage();
     sigY = 40;
   }
+
+  // Left side: Firma o Conformidad Cliente / Responsable
+  if (report && (report.firma_nombre || report.firma_digital)) {
+    if (report.firma_digital && report.firma_digital.startsWith('data:image/')) {
+      try {
+        const base64Clean = report.firma_digital.split(';base64,').pop();
+        const sigBuf = Buffer.from(base64Clean, 'base64');
+        doc.image(sigBuf, 70, sigY - 5, { width: 120, height: 40 });
+      } catch (e) {}
+    }
+    doc.moveTo(60, sigY + 34).lineTo(220, sigY + 34).strokeColor(borderGray).lineWidth(0.8).stroke();
+    doc.fillColor(black).fontSize(8)
+      .text(report.firma_nombre || 'Responsable Recepción', 60, sigY + 38, { align: 'center', width: 160, bold: true })
+      .fontSize(7)
+      .text(report.firma_cargo || 'Conformidad de Trabajo', 60, sigY + 48, { align: 'center', width: 160 })
+      .text('Recepción Conforme', 60, sigY + 57, { align: 'center', width: 160 });
+  }
+
+  // Right side: Firma Trimec
   doc.strokeColor('blue').lineWidth(1.5);
   doc.moveTo(430, sigY + 20).quadraticCurveTo(460, sigY - 10, 480, sigY + 25).stroke();
   doc.moveTo(450, sigY + 10).quadraticCurveTo(470, sigY + 30, 500, sigY + 5).stroke();
 
   doc.fillColor(black).fontSize(8)
-    .text('Angelo Muñoz V.', 410, sigY + 35, { align: 'center', width: 140, bold: true })
+    .text('Angelo Muñoz V.', 410, sigY + 38, { align: 'center', width: 140, bold: true })
     .fontSize(7)
-    .text('77.546.806-8', 410, sigY + 45, { align: 'center', width: 140 })
-    .text('Jefe de Maestranza - Trimec SpA.', 410, sigY + 54, { align: 'center', width: 140 });
+    .text('77.546.806-8', 410, sigY + 48, { align: 'center', width: 140 })
+    .text('Jefe de Maestranza - Trimec SpA.', 410, sigY + 57, { align: 'center', width: 140 });
 
   doc.end();
 };
@@ -648,6 +715,7 @@ export const generateBodegaStockPDF = (rawItems = [], res) => {
   currentY += 10;
 
   // --- TABLA DE INVENTARIO ---
+  // Cabecera
   const drawTableHeader = () => {
     doc.rect(40, currentY, 530, 16).fill(headerBg);
     doc.strokeColor(borderGray).lineWidth(0.5).rect(40, currentY, 530, 16).stroke();
@@ -682,6 +750,7 @@ export const generateBodegaStockPDF = (rawItems = [], res) => {
     const isCritico = stockNum <= stockMin;
     if (isCritico) itemsCriticos++;
 
+    // Fondo fila alterna o alerta
     if (isCritico) {
       doc.rect(40, currentY, 530, 15).fill('#FEE2E2');
     } else if (index % 2 === 1) {

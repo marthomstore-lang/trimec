@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import { saveOfflineItem, getOfflineQueue, removeOfflineItem, syncOfflineQueue } from '../utils/offlineStore';
+import FichaTecnicaIntervencion from './FichaTecnicaIntervencion';
 
 const ModuloTerrenoOffline = ({ initialOtId = '', onBack, showToast }) => {
-  const [activeTab, setActiveTab] = useState('traslados'); // 'traslados', 'gastos', 'hh', 'cola'
+  const [activeTab, setActiveTab] = useState('ficha_tecnica'); // 'ficha_tecnica', 'traslados', 'gastos', 'hh', 'cola'
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState('');
@@ -416,6 +417,13 @@ const ModuloTerrenoOffline = ({ initialOtId = '', onBack, showToast }) => {
       {/* Selector de Sub-Módulos Táctiles */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
         <button 
+          className={`btn ${activeTab === 'ficha_tecnica' ? 'btn-primary' : 'btn-secondary'}`} 
+          style={{ flex: 1, minWidth: '140px', whiteSpace: 'nowrap' }}
+          onClick={() => setActiveTab('ficha_tecnica')}
+        >
+          🛠️ Ficha Técnica
+        </button>
+        <button 
           className={`btn ${activeTab === 'traslados' ? 'btn-primary' : 'btn-secondary'}`} 
           style={{ flex: 1, minWidth: '120px', whiteSpace: 'nowrap' }}
           onClick={() => setActiveTab('traslados')}
@@ -444,6 +452,19 @@ const ModuloTerrenoOffline = ({ initialOtId = '', onBack, showToast }) => {
           📋 Cola ({pendingQueue.length})
         </button>
       </div>
+
+      {/* --- PESTAÑA 0: FICHA DE INTERVENCIÓN TÉCNICA --- */}
+      {activeTab === 'ficha_tecnica' && (
+        <div className="panel-card" style={{ padding: '1.25rem' }}>
+          <FichaTecnicaIntervencion
+            fixedOtId={initialOtId || null}
+            otsList={ots}
+            personalList={workers}
+            showToast={showToast}
+            onSaved={() => loadQueue()}
+          />
+        </div>
+      )}
 
       {/* --- PESTAÑA 1: KILOMETRAJE Y TRASLADOS --- */}
       {activeTab === 'traslados' && (

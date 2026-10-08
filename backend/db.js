@@ -107,9 +107,9 @@ export const run = (sql, params = []) => {
     }
     return pgPool.query(finalSql, params).then(res => {
       const firstRow = res.rows[0];
-      return { 
+      return {
         id: firstRow ? (firstRow.id || firstRow.sku || null) : null,
-        changes: res.rowCount 
+        changes: res.rowCount
       };
     });
   } else {
@@ -126,7 +126,7 @@ export const run = (sql, params = []) => {
 export const initDb = async () => {
   if (isPostgres) {
     console.log('Inicializando funciones de compatibilidad SQLite para PostgreSQL...');
-    
+
     // Crear la función strftime en Postgres para soportar las consultas originales del backend
     await pgPool.query(`
       CREATE OR REPLACE FUNCTION strftime(format text, val text)
@@ -157,7 +157,7 @@ export const initDb = async () => {
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
     `);
-    
+
     await pgPool.query(`
       CREATE OR REPLACE FUNCTION strftime(format text, val timestamp)
       RETURNS text AS $$
@@ -222,6 +222,25 @@ export const initDb = async () => {
       ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS tecnico_id INTEGER;
     `).catch(err => console.log('Error adding tecnico_id to postgres:', err.message));
     await pgPool.query(`
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS activo_identificacion TEXT;
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS fecha_inicio VARCHAR(100);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS fecha_fin VARCHAR(100);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS tipo_mantenimiento VARCHAR(100);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS lecturas_parametros TEXT;
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS causa_raiz TEXT;
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS estado_equipo VARCHAR(100);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS horas_mano_obra TEXT;
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS repuestos_consumidos TEXT;
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS firma_nombre VARCHAR(255);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS firma_cargo VARCHAR(255);
+      ALTER TABLE informes_tecnicos ADD COLUMN IF NOT EXISTS firma_digital TEXT;
+      ALTER TABLE informes_tecnicos ALTER COLUMN antes_condicion TYPE TEXT;
+      ALTER TABLE informes_tecnicos ALTER COLUMN despues_tareas TYPE TEXT;
+      ALTER TABLE informes_tecnicos ALTER COLUMN recomendaciones TYPE TEXT;
+      ALTER TABLE informes_tecnicos ALTER COLUMN fotos_antes TYPE TEXT;
+      ALTER TABLE informes_tecnicos ALTER COLUMN fotos_despues TYPE TEXT;
+    `).catch(err => console.log('Error updating informes_tecnicos columns in postgres:', err.message));
+    await pgPool.query(`
       ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS drive_folder_url VARCHAR(500);
     `).catch(err => console.log('Error adding drive_folder_url to postgres:', err.message));
   }
@@ -237,7 +256,7 @@ export const initDb = async () => {
           rebuild = true;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (rebuild) {
       console.log('Migración: Reconstruyendo tablas locales...');
@@ -274,7 +293,7 @@ export const initDb = async () => {
           await run("ALTER TABLE ordenes_trabajo ADD COLUMN drive_folder_url TEXT");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const wCols = await query("PRAGMA table_info(trabajadores)");
@@ -284,7 +303,7 @@ export const initDb = async () => {
           await run("ALTER TABLE trabajadores ADD COLUMN horas_mensuales_esperadas REAL DEFAULT 180.0");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const invCols = await query("PRAGMA table_info(inventario)");
@@ -298,7 +317,7 @@ export const initDb = async () => {
           await run("ALTER TABLE inventario ADD COLUMN unidad_medida TEXT");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const actCols = await query("PRAGMA table_info(activos)");
@@ -312,7 +331,7 @@ export const initDb = async () => {
           await run("ALTER TABLE activos ADD COLUMN ficha_tecnica TEXT");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const factCols = await query("PRAGMA table_info(facturacion)");
@@ -322,7 +341,7 @@ export const initDb = async () => {
           await run("ALTER TABLE facturacion ADD COLUMN fecha_vencimiento TEXT");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const ggCols = await query("PRAGMA table_info(gastos_generales)");
@@ -336,7 +355,7 @@ export const initDb = async () => {
           await run("ALTER TABLE gastos_generales ADD COLUMN fecha_vencimiento TEXT");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const gdCols = await query("PRAGMA table_info(gastos_diarios)");
@@ -351,18 +370,26 @@ export const initDb = async () => {
     try {
       const infCols = await query("PRAGMA table_info(informes_tecnicos)");
       if (infCols && infCols.length > 0) {
-        const hasHoraIni = infCols.some(c => c.name === 'hora_inicio_ejecucion');
-        if (!hasHoraIni) {
-          await run("ALTER TABLE informes_tecnicos ADD COLUMN hora_inicio_ejecucion TEXT");
-        }
-        const hasHoraFin = infCols.some(c => c.name === 'hora_fin_ejecucion');
-        if (!hasHoraFin) {
-          await run("ALTER TABLE informes_tecnicos ADD COLUMN hora_fin_ejecucion TEXT");
-        }
-        const hasTecnico = infCols.some(c => c.name === 'tecnico_id');
-        if (!hasTecnico) {
-          await run("ALTER TABLE informes_tecnicos ADD COLUMN tecnico_id INTEGER");
-        }
+        const addIfMissing = async (colName, colType = 'TEXT') => {
+          if (!infCols.some(c => c.name === colName)) {
+            await run(`ALTER TABLE informes_tecnicos ADD COLUMN ${colName} ${colType}`);
+          }
+        };
+        await addIfMissing('hora_inicio_ejecucion', 'TEXT');
+        await addIfMissing('hora_fin_ejecucion', 'TEXT');
+        await addIfMissing('tecnico_id', 'INTEGER');
+        await addIfMissing('activo_identificacion', 'TEXT');
+        await addIfMissing('fecha_inicio', 'TEXT');
+        await addIfMissing('fecha_fin', 'TEXT');
+        await addIfMissing('tipo_mantenimiento', 'TEXT');
+        await addIfMissing('lecturas_parametros', 'TEXT');
+        await addIfMissing('causa_raiz', 'TEXT');
+        await addIfMissing('estado_equipo', 'TEXT');
+        await addIfMissing('horas_mano_obra', 'TEXT');
+        await addIfMissing('repuestos_consumidos', 'TEXT');
+        await addIfMissing('firma_nombre', 'TEXT');
+        await addIfMissing('firma_cargo', 'TEXT');
+        await addIfMissing('firma_digital', 'TEXT');
       }
     } catch (e) {}
   }
@@ -562,7 +589,19 @@ export const initDb = async () => {
       fotos_despues TEXT,
       hora_inicio_ejecucion TEXT,
       hora_fin_ejecucion TEXT,
-      tecnico_id INTEGER
+      tecnico_id INTEGER,
+      activo_identificacion TEXT,
+      fecha_inicio TEXT,
+      fecha_fin TEXT,
+      tipo_mantenimiento TEXT,
+      lecturas_parametros TEXT,
+      causa_raiz TEXT,
+      estado_equipo TEXT,
+      horas_mano_obra TEXT,
+      repuestos_consumidos TEXT,
+      firma_nombre TEXT,
+      firma_cargo TEXT,
+      firma_digital TEXT
     )
   `));
 

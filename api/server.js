@@ -1820,7 +1820,7 @@ app.put('/api/cotizaciones/:id/estado', authenticate, checkRole(['admin']), asyn
   }
 });
 
-// --- INFORMES TÉCNICOS ---
+// --- INFORMES TÉCNICOS / FICHA DE INTERVENCIÓN ---
 app.get('/api/informes/ot/:ot_id', authenticate, async (req, res) => {
   const { ot_id } = req.params;
   try {
@@ -1833,44 +1833,247 @@ app.get('/api/informes/ot/:ot_id', authenticate, async (req, res) => {
 
 app.post('/api/informes/ot/:ot_id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { ot_id } = req.params;
-  const { antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues, hora_inicio_ejecucion, hora_fin_ejecucion, tecnico_id } = req.body;
+  const {
+    antes_condicion,
+    despues_tareas,
+    recomendaciones,
+    fotos_antes,
+    fotos_despues,
+    hora_inicio_ejecucion,
+    hora_fin_ejecucion,
+    tecnico_id,
+    activo_identificacion,
+    fecha_inicio,
+    fecha_fin,
+    tipo_mantenimiento,
+    lecturas_parametros,
+    causa_raiz,
+    estado_equipo,
+    horas_mano_obra,
+    repuestos_consumidos,
+    firma_nombre,
+    firma_cargo,
+    firma_digital,
+    registrar_hh_ot,
+    descontar_inventario
+  } = req.body;
+
   try {
+    // Helper para asegurar subcarpeta en Google Drive y subir fotos en base64
+    let cachedFolderId = null;
+    const ensureOtDriveFolder = async () => {
+      if (cachedFolderId) return cachedFolderId;
+      const otRecord = await get('SELECT drive_folder_url, cliente_id FROM ordenes_trabajo WHERE id = ?', [ot_id]);
+      if (!otRecord) return null;
+      let folderUrl = otRecord.drive_folder_url;
+      const parentFolderId = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1-WvEKcnWOovvsfmRCNGGJ92b8TEEXJoz';
+
+      if (folderUrl && !folderUrl.includes('?q=')) {
+        const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+        const extractedId = match ? match[1] : null;
+        if (extractedId && extractedId !== parentFolderId) {
+          cachedFolderId = extractedId;
+          return cachedFolderId;
+        }
+      }
+
+      const clientRecord = await get('SELECT razon_social FROM clientes WHERE id = ?', [otRecord.cliente_id]);
+      const clientName = clientRecord ? clientRecord.razon_social : '';
+      const folderName = `OT ${ot_id} - ${clientName}`.trim();
+      folderUrl = await createDriveFolder(folderName);
+      if (folderUrl) {
+        await run('UPDATE ordenes_trabajo SET drive_folder_url = ? WHERE id = ?', [folderUrl, ot_id]);
+        const match = folderUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+        const extractedId = match ? match[1] : null;
+        if (extractedId && extractedId !== parentFolderId) {
+          cachedFolderId = extractedId;
+        }
+      }
+      return cachedFolderId;
+    };
+
+    const processPhotoArray = async (rawPhotos, prefixLabel) => {
+      let arr = [];
+      try {
+        arr = typeof rawPhotos === 'string' ? JSON.parse(rawPhotos) : (Array.isArray(rawPhotos) ? rawPhotos : []);
+      } catch (e) {
+        arr = [];
+      }
+      const processed = [];
+      for (let i = 0; i < arr.length; i++) {
+        const item = arr[i];
+        const dataStr = typeof item === 'object' && item !== null ? (item.url || item.data || '') : String(item || '');
+        if (dataStr.startsWith('data:image/')) {
+          try {
+            const folderId = await ensureOtDriveFolder();
+            if (folderId) {
+              const mimeMatch = dataStr.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
+              const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+              const ext = mimeType.includes('png') ? '.png' : '.jpg';
+              const base64Clean = dataStr.split(';base64,').pop();
+              const buffer = Buffer.from(base64Clean, 'base64');
+              const filename = `[${prefixLabel}]_OT_${ot_id}_${Date.now()}_${i + 1}${ext}`;
+              const driveUrl = await uploadFileToDrive(folderId, filename, mimeType, buffer);
+              if (driveUrl) {
+                const now = new Date().toISOString().split('T')[0];
+                await run(
+                  'INSERT INTO archivos_ot (ot_id, nombre_original, nombre_guardado, tipo, fecha_subida) VALUES (?, ?, ?, ?, ?)',
+                  [ot_id, filename, driveUrl, mimeType, now]
+                );
+                processed.push(driveUrl);
+                continue;
+              }
+            }
+          } catch (upErr) {
+            console.error(`Error subiendo foto ${prefixLabel} a Drive:`, upErr.message);
+          }
+        }
+        if (dataStr) processed.push(dataStr);
+      }
+      return JSON.stringify(processed);
+    };
+
+    const finalFotosAntes = await processPhotoArray(fotos_antes, 'ANTES');
+    const finalFotosDespues = await processPhotoArray(fotos_despues, 'DESPUES');
+
+    // Procesar repuestos consumidos y descuento opcional de inventario
+    let parsedRepuestos = [];
+    try {
+      parsedRepuestos = typeof repuestos_consumidos === 'string'
+        ? JSON.parse(repuestos_consumidos)
+        : (Array.isArray(repuestos_consumidos) ? repuestos_consumidos : []);
+    } catch (e) {
+      parsedRepuestos = [];
+    }
+
+    const fechaOp = fecha_inicio || new Date().toISOString().split('T')[0];
+
+    if (descontar_inventario && parsedRepuestos.length > 0) {
+      for (let i = 0; i < parsedRepuestos.length; i++) {
+        const rep = parsedRepuestos[i];
+        if (rep.sku && !rep.ya_descontado && parseFloat(rep.cantidad) > 0) {
+          const itemInv = await get('SELECT * FROM inventario WHERE sku = ?', [rep.sku]);
+          if (itemInv) {
+            const cant = parseFloat(rep.cantidad) || 1;
+            const valUnit = parseFloat(itemInv.valor_unitario) || 0;
+            await run(`
+              INSERT INTO inventario_movimientos (tipo, fecha, sku, cantidad, valor_unitario, factura_num, proveedor_o_cliente, ot_id)
+              VALUES ('SALIDA', ?, ?, ?, ?, '', 'Consumo Ficha Técnica OT', ?)
+            `, [fechaOp, rep.sku, cant, valUnit, ot_id]);
+
+            const newStock = (parseFloat(itemInv.stock) || 0) - cant;
+            await run('UPDATE inventario SET stock = ? WHERE sku = ?', [newStock, rep.sku]);
+
+            const net = valUnit * cant;
+            const iva = net * 0.19;
+            const total = net + iva;
+            await run(`
+              INSERT INTO gastos_diarios (ot_id, fecha, clasificacion, detalle, cantidad, valor_neto, valor_iva, valor_total)
+              VALUES (?, ?, 'INSUMOS', ?, ?, ?, ?, ?)
+            `, [ot_id, fechaOp, `[ SKU: ${rep.sku} ] ${itemInv.descripcion}`, cant, net, iva, total]);
+
+            parsedRepuestos[i].ya_descontado = true;
+          }
+        }
+      }
+    }
+
+    const finalRepuestosStr = JSON.stringify(parsedRepuestos);
+    const finalLecturasStr = typeof lecturas_parametros === 'string'
+      ? lecturas_parametros
+      : JSON.stringify(lecturas_parametros || {});
+    const finalHorasStr = typeof horas_mano_obra === 'string'
+      ? horas_mano_obra
+      : JSON.stringify(horas_mano_obra || {});
+
+    // Registrar HH automáticamente en la OT si se solicitó
+    if (registrar_hh_ot && tecnico_id) {
+      let hhObj = {};
+      try {
+        hhObj = typeof horas_mano_obra === 'string' ? JSON.parse(horas_mano_obra) : (horas_mano_obra || {});
+      } catch (e) {}
+      const hNorm = parseFloat(hhObj.horas_normales) || 0;
+      const hExt = parseFloat(hhObj.horas_extra) || 0;
+      const ubic = hhObj.ubicacion || 'Terreno';
+      if (hNorm > 0 || hExt > 0) {
+        await run(
+          'INSERT INTO registro_hh (ot_id, trabajador_id, fecha, horas_normales, horas_extra, ubicacion, actividad) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [ot_id, parseInt(tecnico_id, 10), fechaOp, hNorm, hExt, ubic, despues_tareas || 'Intervención técnica registrada']
+        );
+      }
+    }
+
     const existing = await get('SELECT id FROM informes_tecnicos WHERE ot_id = ?', [ot_id]);
     if (existing) {
       await run(`
         UPDATE informes_tecnicos 
         SET antes_condicion = ?, despues_tareas = ?, recomendaciones = ?, fotos_antes = ?, fotos_despues = ?,
-            hora_inicio_ejecucion = ?, hora_fin_ejecucion = ?, tecnico_id = ?
+            hora_inicio_ejecucion = ?, hora_fin_ejecucion = ?, tecnico_id = ?,
+            activo_identificacion = ?, fecha_inicio = ?, fecha_fin = ?, tipo_mantenimiento = ?,
+            lecturas_parametros = ?, causa_raiz = ?, estado_equipo = ?, horas_mano_obra = ?,
+            repuestos_consumidos = ?, firma_nombre = ?, firma_cargo = ?, firma_digital = ?
         WHERE ot_id = ?
       `, [
-        antes_condicion,
-        despues_tareas,
-        recomendaciones,
-        typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []),
-        typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []),
+        antes_condicion || '',
+        despues_tareas || '',
+        recomendaciones || '',
+        finalFotosAntes,
+        finalFotosDespues,
         hora_inicio_ejecucion || null,
         hora_fin_ejecucion || null,
         tecnico_id ? parseInt(tecnico_id, 10) : null,
+        activo_identificacion || '',
+        fecha_inicio || null,
+        fecha_fin || null,
+        tipo_mantenimiento || 'Correctivo (Avería)',
+        finalLecturasStr,
+        causa_raiz || '',
+        estado_equipo || 'Operativo',
+        finalHorasStr,
+        finalRepuestosStr,
+        firma_nombre || '',
+        firma_cargo || '',
+        firma_digital || '',
         ot_id
       ]);
     } else {
       await run(`
-        INSERT INTO informes_tecnicos (ot_id, antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues, hora_inicio_ejecucion, hora_fin_ejecucion, tecnico_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO informes_tecnicos (
+          ot_id, antes_condicion, despues_tareas, recomendaciones, fotos_antes, fotos_despues,
+          hora_inicio_ejecucion, hora_fin_ejecucion, tecnico_id,
+          activo_identificacion, fecha_inicio, fecha_fin, tipo_mantenimiento,
+          lecturas_parametros, causa_raiz, estado_equipo, horas_mano_obra,
+          repuestos_consumidos, firma_nombre, firma_cargo, firma_digital
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         ot_id,
-        antes_condicion,
-        despues_tareas,
-        recomendaciones,
-        typeof fotos_antes === 'string' ? fotos_antes : JSON.stringify(fotos_antes || []),
-        typeof fotos_despues === 'string' ? fotos_despues : JSON.stringify(fotos_despues || []),
+        antes_condicion || '',
+        despues_tareas || '',
+        recomendaciones || '',
+        finalFotosAntes,
+        finalFotosDespues,
         hora_inicio_ejecucion || null,
         hora_fin_ejecucion || null,
-        tecnico_id ? parseInt(tecnico_id, 10) : null
+        tecnico_id ? parseInt(tecnico_id, 10) : null,
+        activo_identificacion || '',
+        fecha_inicio || null,
+        fecha_fin || null,
+        tipo_mantenimiento || 'Correctivo (Avería)',
+        finalLecturasStr,
+        causa_raiz || '',
+        estado_equipo || 'Operativo',
+        finalHorasStr,
+        finalRepuestosStr,
+        firma_nombre || '',
+        firma_cargo || '',
+        firma_digital || ''
       ]);
     }
-    res.json({ message: 'Informe técnico guardado con éxito' });
+    const savedReport = await get('SELECT * FROM informes_tecnicos WHERE ot_id = ?', [ot_id]);
+    res.json({ message: 'Ficha de intervención técnica guardada con éxito', report: savedReport });
   } catch (error) {
+    console.error('Error al guardar informe técnico:', error);
     res.status(500).json({ error: error.message });
   }
 });

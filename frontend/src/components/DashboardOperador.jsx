@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import FichaTecnicaIntervencion from './FichaTecnicaIntervencion';
 
 const DashboardOperador = ({ showToast }) => {
   const [ots, setOts] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('hh'); // 'hh', 'gastos', 'traslados'
+  const [activeTab, setActiveTab] = useState('ficha_tecnica'); // 'ficha_tecnica', 'hh', 'gastos', 'traslados'
 
   // Historiales locales (recientes)
   const [recentHh, setRecentHh] = useState([]);
@@ -212,6 +213,12 @@ const DashboardOperador = ({ showToast }) => {
       {/* TABS SELECTOR */}
       <div className="tabs-container mb-4">
         <button
+          className={`tab-btn ${activeTab === 'ficha_tecnica' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ficha_tecnica')}
+        >
+          🛠️ Ficha Técnica / Intervención
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'hh' ? 'active' : ''}`}
           onClick={() => setActiveTab('hh')}
         >
@@ -231,6 +238,16 @@ const DashboardOperador = ({ showToast }) => {
         </button>
       </div>
 
+      {activeTab === 'ficha_tecnica' ? (
+        <div className="card shadow-sm p-4 mb-4">
+          <FichaTecnicaIntervencion
+            otsList={ots}
+            personalList={workers}
+            showToast={showToast}
+            onSaved={() => fetchData()}
+          />
+        </div>
+      ) : (
       <div className="row">
         {/* PANEL REGISTRO (IZQUIERDA) */}
         <div className="col-md-7 mb-4">
@@ -714,6 +731,7 @@ const DashboardOperador = ({ showToast }) => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

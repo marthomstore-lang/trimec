@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../utils/api';
+import FichaTecnicaIntervencion from './FichaTecnicaIntervencion';
 
 const DEFAULT_NOTAS = `1.- Solo se aceptará como válida, la cotización enviada en formato PDF
 2.- Este presupuesto tiene una validez de cinco días hábiles, posteriores a eso se deberan recotizar Item N° 2 y 3
@@ -1278,14 +1279,14 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
               </div>
             </div>
 
-            {/* Informe Técnico de Trabajo */}
+            {/* Informe Técnico de Trabajo / Ficha de Intervención */}
             <div className="panel-card" style={{ marginTop: '1.5rem' }}>
               <div className="panel-header" style={{ marginBottom: '1rem' }}>
-                <h3>Informe Técnico de Trabajo</h3>
+                <h3>🛠️ Ficha de Intervención e Informe Técnico</h3>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {['admin', 'supervisor'].includes(userRole) && !isEditingInforme && (
+                  {['admin', 'supervisor', 'operador'].includes(userRole) && !isEditingInforme && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setIsEditingInforme(true)}>
-                      ✏️ Editar
+                      ✏️ {informe ? 'Editar Ficha' : 'Completar Ficha'}
                     </button>
                   )}
                   {informe && (
@@ -1297,137 +1298,213 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
               </div>
 
               {isEditingInforme ? (
-                <form onSubmit={handleSaveInformeSubmit}>
-                  <div className="row mb-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div className="form-group">
-                      <label>Hora Inicio Ejecución</label>
-                      <input 
-                        type="time" 
-                        className="form-control" 
-                        value={informeForm.hora_inicio_ejecucion} 
-                        onChange={(e) => setInformeForm({ ...informeForm, hora_inicio_ejecucion: e.target.value })}
-                      />
+                <FichaTecnicaIntervencion
+                  fixedOtId={otId}
+                  initialReport={informe}
+                  personalList={workers}
+                  showToast={showToast}
+                  onCancel={() => setIsEditingInforme(false)}
+                  onSaved={() => {
+                    setIsEditingInforme(false);
+                    fetchOtDetail();
+                  }}
+                />
+              ) : informe ? (() => {
+                const parseSafe = (val, def) => {
+                  if (!val) return def;
+                  if (typeof val === 'object') return val;
+                  try { return JSON.parse(val); } catch { return def; }
+                };
+                const params = parseSafe(informe.lecturas_parametros, {});
+                const hhInfo = parseSafe(informe.horas_mano_obra, {});
+                const repuestosList = parseSafe(informe.repuestos_consumidos, []);
+                const fotosAntesList = parseSafe(informe.fotos_antes, []);
+                const fotosDespuesList = parseSafe(informe.fotos_despues, []);
+                const hasParams = Object.values(params).some(v => v && String(v).trim() !== '');
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* 1. Identificación y Estado */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                      gap: '0.75rem',
+                      padding: '0.85rem',
+                      backgroundColor: 'rgba(255,255,255,0.03)',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--panel-border)'
+                    }}>
+                      <div>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Equipo / Activo Intervenido</strong>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#60a5fa' }}>
+                          {informe.activo_identificacion || 'No especificado'}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Tipo de Mantenimiento</strong>
+                        <span className="badge badge-proceso" style={{ marginTop: '0.15rem', display: 'inline-block' }}>
+                          {informe.tipo_mantenimiento || 'Preventivo'}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Estado Final del Equipo</strong>
+                        <span
+                          className="badge"
+                          style={{
+                            marginTop: '0.15rem',
+                            display: 'inline-block',
+                            background: informe.estado_equipo === 'Fuera de Servicio' ? 'rgba(239,68,68,0.2)' : informe.estado_equipo === 'En Pruebas' ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)',
+                            color: informe.estado_equipo === 'Fuera de Servicio' ? '#f87171' : informe.estado_equipo === 'En Pruebas' ? '#fbbf24' : '#34d399'
+                          }}
+                        >
+                          {informe.estado_equipo || 'Operativo'}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Inicio / Término</strong>
+                        <span style={{ fontSize: '0.82rem' }}>
+                          {informe.fecha_inicio || ''} {informe.hora_inicio_ejecucion || '--:--'} → {informe.fecha_fin || ''} {informe.hora_fin_ejecucion || '--:--'}
+                        </span>
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>Técnico Responsable</strong>
+                        <span style={{ fontSize: '0.85rem' }}>
+                          {workers.find(w => w.id === parseInt(informe.tecnico_id))?.nombre || (informe.tecnico_id ? `Técnico #${informe.tecnico_id}` : 'Por definir')}
+                          {hhInfo.horas_normales ? ` (${hhInfo.horas_normales}h N / ${hhInfo.horas_extra || 0}h E)` : ''}
+                        </span>
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label>Hora Fin Ejecución</label>
-                      <input 
-                        type="time" 
-                        className="form-control" 
-                        value={informeForm.hora_fin_ejecucion} 
-                        onChange={(e) => setInformeForm({ ...informeForm, hora_fin_ejecucion: e.target.value })}
-                      />
+
+                    {/* 2. Ejecución y Parámetros */}
+                    {informe.antes_condicion && (
+                      <div>
+                        <strong style={{ fontSize: '0.85rem', color: '#fbbf24' }}>Condición Inicial (Antes):</strong>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>{informe.antes_condicion}</p>
+                      </div>
+                    )}
+
+                    <div>
+                      <strong style={{ fontSize: '0.85rem', color: '#34d399' }}>Descripción de la Actividad Realizada:</strong>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>{informe.despues_tareas}</p>
                     </div>
-                    <div className="form-group">
-                      <label>Técnico Ejecutor</label>
-                      <select 
-                        className="form-select" 
-                        value={informeForm.tecnico_id} 
-                        onChange={(e) => setInformeForm({ ...informeForm, tecnico_id: e.target.value })}
-                      >
-                        <option value="">-- Seleccionar Técnico --</option>
-                        {workers.map(w => (
-                          <option key={w.id} value={w.id}>{w.nombre} ({w.rol})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '1rem' }}>
-                    <label>Condición Inicial (Antes)</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="3" 
-                      placeholder="Ej: Pasador de pivoteo con oreja cortada en balde..." 
-                      value={informeForm.antes_condicion} 
-                      onChange={(e) => setInformeForm({ ...informeForm, antes_condicion: e.target.value })}
-                      required
-                    ></textarea>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '1rem' }}>
-                    <label>Tareas Ejecutadas (Después)</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="3" 
-                      placeholder="Ej: Se retira pasador y oreja para proceder a biselar y soldar..." 
-                      value={informeForm.despues_tareas} 
-                      onChange={(e) => setInformeForm({ ...informeForm, despues_tareas: e.target.value })}
-                      required
-                    ></textarea>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: '1rem' }}>
-                    <label>Recomendaciones</label>
-                    <textarea 
-                      className="form-control" 
-                      rows="2" 
-                      placeholder="Ej: Engrasar pasador cada 50 horas de uso..." 
-                      value={informeForm.recomendaciones} 
-                      onChange={(e) => setInformeForm({ ...informeForm, recomendaciones: e.target.value })}
-                    ></textarea>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsEditingInforme(false)}>Cancelar</button>
-                    <button type="submit" className="btn btn-primary btn-sm">Guardar Informe</button>
-                  </div>
-                </form>
-              ) : informe ? (
-                <div>
-                  {(informe.hora_inicio_ejecucion || informe.hora_fin_ejecucion || informe.tecnico_id) && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
-                      {informe.tecnico_id && (
-                        <div>
-                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Técnico Ejecutor:</strong>
-                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>
-                            {workers.find(w => w.id === parseInt(informe.tecnico_id))?.nombre || `Técnico #${informe.tecnico_id}`}
-                          </p>
+
+                    {informe.causa_raiz && (
+                      <div>
+                        <strong style={{ fontSize: '0.85rem', color: '#f87171' }}>Código de Falla / Causa Raíz:</strong>
+                        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.88rem' }}>{informe.causa_raiz}</p>
+                      </div>
+                    )}
+
+                    {hasParams && (
+                      <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', padding: '0.75rem', borderRadius: '0.5rem' }}>
+                        <strong style={{ fontSize: '0.8rem', color: '#60a5fa', display: 'block', marginBottom: '0.4rem' }}>
+                          🌡️ Lecturas de Parámetros Cuantitativos:
+                        </strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.82rem' }}>
+                          {params.temperatura && <span><strong>Temp:</strong> {params.temperatura}</span>}
+                          {params.vibracion && <span><strong>Vibración:</strong> {params.vibracion}</span>}
+                          {params.presion && <span><strong>Presión:</strong> {params.presion}</span>}
+                          {params.voltaje && <span><strong>Voltaje/Corr:</strong> {params.voltaje}</span>}
+                          {params.otros && <span><strong>Otros:</strong> {params.otros}</span>}
                         </div>
-                      )}
-                      {informe.hora_inicio_ejecucion && (
-                        <div>
-                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Inicio Ejecución:</strong>
-                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>{informe.hora_inicio_ejecucion} hrs</p>
+                      </div>
+                    )}
+
+                    {/* 3. Repuestos Consumidos */}
+                    {Array.isArray(repuestosList) && repuestosList.length > 0 && (
+                      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', padding: '0.75rem', borderRadius: '0.5rem' }}>
+                        <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
+                          🔩 Repuestos y Materiales Consumidos ({repuestosList.length}):
+                        </strong>
+                        <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.84rem' }}>
+                          {repuestosList.map((r, i) => (
+                            <li key={i}>
+                              <strong>[{r.sku || 'S/C'}]</strong> {r.descripcion} — <strong>{r.cantidad} {r.unidad || 'UN'}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {informe.recomendaciones && (
+                      <div>
+                        <strong style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Observaciones y Recomendaciones:</strong>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-secondary)' }}>{informe.recomendaciones}</p>
+                      </div>
+                    )}
+
+                    {/* Respaldo Fotográfico Antes / Después */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.25rem' }}>
+                      <div style={{ border: '1px dashed rgba(245, 158, 11, 0.4)', padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.01)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#fbbf24', marginBottom: '0.4rem' }}>
+                          📷 EVIDENCIA ANTES ({fotosAntesList.length})
                         </div>
-                      )}
-                      {informe.hora_fin_ejecucion && (
-                        <div>
-                          <strong style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Término Ejecución:</strong>
-                          <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.85rem' }}>{informe.hora_fin_ejecucion} hrs</p>
+                        {fotosAntesList.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {fotosAntesList.map((url, idx) => (
+                              <a key={idx} href={url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}>
+                                ☁️ Foto Antes #{idx + 1}
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin fotos del antes</span>
+                        )}
+                      </div>
+
+                      <div style={{ border: '1px dashed rgba(16, 185, 129, 0.4)', padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(255,255,255,0.01)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#34d399', marginBottom: '0.4rem' }}>
+                          📸 EVIDENCIA DESPUÉS ({fotosDespuesList.length})
                         </div>
-                      )}
+                        {fotosDespuesList.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {fotosDespuesList.map((url, idx) => (
+                              <a key={idx} href={url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}>
+                                ☁️ Foto Después #{idx + 1}
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sin fotos del después</span>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Condición Inicial:</strong>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>{informe.antes_condicion}</p>
+
+                    {/* Firma de Conformidad */}
+                    {(informe.firma_nombre || informe.firma_digital) && (
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '1rem',
+                        padding: '0.75rem 1rem',
+                        background: 'rgba(16, 185, 129, 0.08)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        borderRadius: '0.5rem'
+                      }}>
+                        <div>
+                          <strong style={{ fontSize: '0.8rem', color: '#34d399', display: 'block' }}>✍️ Conformidad y Recepción del Trabajo</strong>
+                          <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{informe.firma_nombre || 'Responsable'}</span>
+                          {informe.firma_cargo && <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}> — {informe.firma_cargo}</span>}
+                        </div>
+                        {informe.firma_digital && (
+                          <img
+                            src={informe.firma_digital}
+                            alt="Firma conformidad"
+                            style={{ height: '52px', background: '#fff', padding: '4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Tareas Ejecutadas:</strong>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem' }}>{informe.despues_tareas}</p>
-                  </div>
-                  {informe.recomendaciones && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <strong style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Recomendaciones:</strong>
-                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-secondary)' }}>{informe.recomendaciones}</p>
-                    </div>
-                  )}
-                  {/* Photo Simulation Captions */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                    <div style={{ border: '1px dashed var(--panel-border)', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center', background: 'rgba(255,255,255,0.01)' }}>
-                      <span style={{ fontSize: '2rem' }}>📸</span>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', marginTop: '0.25rem' }}>EVIDENCIA: ANTES</div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>[Imágenes en archivos adjuntos]</span>
-                    </div>
-                    <div style={{ border: '1px dashed var(--panel-border)', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center', background: 'rgba(255,255,255,0.01)' }}>
-                      <span style={{ fontSize: '2rem' }}>📸</span>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem', marginTop: '0.25rem' }}>EVIDENCIA: DESPUÉS</div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>[Imágenes en archivos adjuntos]</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
+                );
+              })() : (
                 <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-secondary)', border: '1px dashed var(--panel-border)', borderRadius: '0.75rem' }}>
-                  No se ha redactado el informe técnico de entrega para esta OT.
-                  {['admin', 'supervisor'].includes(userRole) && (
-                    <button className="btn btn-secondary btn-sm" style={{ display: 'block', margin: '0.75rem auto 0 auto' }} onClick={() => setIsEditingInforme(true)}>
-                      ✍️ Redactar Informe
+                  No se ha registrado la Ficha de Intervención Técnica para esta OT.
+                  {['admin', 'supervisor', 'operador'].includes(userRole) && (
+                    <button className="btn btn-primary btn-sm" style={{ display: 'block', margin: '0.75rem auto 0 auto' }} onClick={() => setIsEditingInforme(true)}>
+                      🛠️ Completar Ficha de Intervención Técnica
                     </button>
                   )}
                 </div>
@@ -1721,74 +1798,130 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
       )}
 
       {/* MODAL: VISTA PREVIA INFORME TÉCNICO FORMAL */}
-      {showInformePreview && informe && (
-        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)' }}>
-          <div className="modal-content" style={{ maxWidth: '800px', background: '#fff', color: '#333', padding: '2.5rem', borderRadius: '0.5rem', fontFamily: 'Arial, sans-serif' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-              <div>
-                <h2 style={{ margin: 0, color: '#005b96', fontWeight: 'bold' }}>TRIMEC SpA</h2>
-                <span style={{ fontSize: '0.8rem', color: '#666' }}>Servicios Metalmecánicos y Maestranza</span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <h3 style={{ margin: 0, color: '#333' }}>INFORME TÉCNICO</h3>
-                <span style={{ fontWeight: 'bold', color: '#005b96' }}>OT-{otId}</span>
-              </div>
-            </div>
+      {showInformePreview && informe && (() => {
+        const parseSafe = (val, def) => {
+          if (!val) return def;
+          if (typeof val === 'object') return val;
+          try { return JSON.parse(val); } catch { return def; }
+        };
+        const params = parseSafe(informe.lecturas_parametros, {});
+        const repuestosList = parseSafe(informe.repuestos_consumidos, []);
+        const hasParams = Object.values(params).some(v => v && String(v).trim() !== '');
 
-            {/* Header Table Info */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.5rem', color: '#333', fontSize: '0.9rem' }}>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', width: '120px', background: '#f9f9f9' }}>Señores</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{ot?.cliente_nombre || 'Cliente'}</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', width: '120px', background: '#f9f9f9' }}>Referencia</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{ot?.detalle}</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Ciudad</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>Yungay / Concepción</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Contenido</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>Informe de Trabajo</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Especialidad</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>Mecánico / Soldador</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Ing. Mecánico</td>
-                  <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>Angelo Muñoz V.</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Condicion Inicial y Tareas */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
-              <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '4px' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', color: '#a94442', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>CONDICIÓN ACTUAL (ANTES)</h4>
-                <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4' }}>{informe.antes_condicion}</p>
+        return (
+          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <div className="modal-content" style={{ maxWidth: '820px', maxHeight: '90vh', overflowY: 'auto', background: '#fff', color: '#333', padding: '2.5rem', borderRadius: '0.5rem', fontFamily: 'Arial, sans-serif' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, color: '#005b96', fontWeight: 'bold' }}>TRIMEC SpA</h2>
+                  <span style={{ fontSize: '0.8rem', color: '#666' }}>Servicios Metalmecánicos y Maestranza</span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <h3 style={{ margin: 0, color: '#333' }}>FICHA E INFORME TÉCNICO</h3>
+                  <span style={{ fontWeight: 'bold', color: '#005b96' }}>OT-{otId}</span>
+                </div>
               </div>
-              <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '4px' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', color: '#3c763d', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>TAREAS EJECUTADAS (DESPUÉS)</h4>
-                <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4' }}>{informe.despues_tareas}</p>
-              </div>
-            </div>
 
-            {informe.recomendaciones && (
-              <div style={{ marginTop: '1.5rem', border: '1px solid #bce8f1', background: '#d9edf7', padding: '1rem', borderRadius: '4px', color: '#31708f' }}>
-                <h4 style={{ margin: '0 0 0.25rem 0', fontWeight: 'bold' }}>RECOMENDACIONES POST-SERVICIO</h4>
-                <p style={{ margin: 0, fontSize: '0.9rem' }}>{informe.recomendaciones}</p>
-              </div>
-            )}
+              {/* Header Table Info */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1.25rem', color: '#333', fontSize: '0.88rem' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', width: '140px', background: '#f9f9f9' }}>Cliente</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{ot?.cliente_nombre || 'Cliente'}</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', width: '140px', background: '#f9f9f9' }}>Activo / Equipo</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold' }}>{informe.activo_identificacion || ot?.detalle}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Tipo Mantención</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{informe.tipo_mantenimiento || 'Preventivo'}</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Estado Final Equipo</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', color: informe.estado_equipo === 'Fuera de Servicio' ? '#c0392b' : '#27ae60' }}>
+                      {informe.estado_equipo || 'Operativo'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Inicio Trabajo</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{informe.fecha_inicio || ''} {informe.hora_inicio_ejecucion || ''}</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd', fontWeight: 'bold', background: '#f9f9f9' }}>Término Trabajo</td>
+                    <td style={{ padding: '0.4rem', border: '1px solid #ddd' }}>{informe.fecha_fin || ''} {informe.hora_fin_ejecucion || ''}</td>
+                  </tr>
+                </tbody>
+              </table>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2.5rem', borderTop: '1px solid #eee', paddingTop: '1.5rem' }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => window.print()} style={{ background: '#666', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
-                🖨️ Imprimir Reporte
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowInformePreview(false)} style={{ background: '#333', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
-                Cerrar Previsualización
-              </button>
+              {/* Condicion Inicial y Tareas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginTop: '1rem' }}>
+                <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '4px' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#a94442', borderBottom: '1px solid #eee', paddingBottom: '0.25rem', fontSize: '0.9rem' }}>CONDICIÓN INICIAL (ANTES)</h4>
+                  <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: '1.4' }}>{informe.antes_condicion || 'Sin observaciones iniciales'}</p>
+                </div>
+                <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '4px' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#3c763d', borderBottom: '1px solid #eee', paddingBottom: '0.25rem', fontSize: '0.9rem' }}>ACTIVIDAD EJECUTADA (DESPUÉS)</h4>
+                  <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: '1.4' }}>{informe.despues_tareas}</p>
+                </div>
+              </div>
+
+              {informe.causa_raiz && (
+                <div style={{ marginTop: '1rem', border: '1px solid #ebccd1', background: '#f2dede', padding: '0.75rem 1rem', borderRadius: '4px', color: '#a94442', fontSize: '0.88rem' }}>
+                  <strong>Código de Falla / Causa Raíz:</strong> {informe.causa_raiz}
+                </div>
+              )}
+
+              {hasParams && (
+                <div style={{ marginTop: '1rem', border: '1px solid #ddd', padding: '0.75rem 1rem', borderRadius: '4px', background: '#f8fafc', fontSize: '0.85rem' }}>
+                  <strong style={{ display: 'block', marginBottom: '0.35rem', color: '#005b96' }}>LECTURAS DE PARÁMETROS CUANTITATIVOS:</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem' }}>
+                    {params.temperatura && <span><strong>Temperatura:</strong> {params.temperatura}</span>}
+                    {params.vibracion && <span><strong>Vibración:</strong> {params.vibracion}</span>}
+                    {params.presion && <span><strong>Presión:</strong> {params.presion}</span>}
+                    {params.voltaje && <span><strong>Voltaje/Corriente:</strong> {params.voltaje}</span>}
+                    {params.otros && <span><strong>Otros:</strong> {params.otros}</span>}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(repuestosList) && repuestosList.length > 0 && (
+                <div style={{ marginTop: '1rem', border: '1px solid #ddd', padding: '0.75rem 1rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                  <strong style={{ display: 'block', marginBottom: '0.35rem', color: '#333' }}>REPUESTOS Y MATERIALES CONSUMIDOS:</strong>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    {repuestosList.map((r, i) => (
+                      <li key={i}>[{r.sku || 'S/C'}] {r.descripcion} — Cant: {r.cantidad} {r.unidad || 'UN'}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {informe.recomendaciones && (
+                <div style={{ marginTop: '1rem', border: '1px solid #bce8f1', background: '#d9edf7', padding: '0.85rem 1rem', borderRadius: '4px', color: '#31708f' }}>
+                  <h4 style={{ margin: '0 0 0.25rem 0', fontWeight: 'bold', fontSize: '0.9rem' }}>OBSERVACIONES Y RECOMENDACIONES</h4>
+                  <p style={{ margin: 0, fontSize: '0.88rem' }}>{informe.recomendaciones}</p>
+                </div>
+              )}
+
+              {(informe.firma_nombre || informe.firma_digital) && (
+                <div style={{ marginTop: '1.5rem', borderTop: '1px solid #ccc', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', color: '#666' }}>CONFORMIDAD Y RECEPCIÓN DEL SERVICIO:</div>
+                    <strong style={{ fontSize: '0.95rem' }}>{informe.firma_nombre}</strong>
+                    {informe.firma_cargo && <div style={{ fontSize: '0.82rem', color: '#555' }}>{informe.firma_cargo}</div>}
+                  </div>
+                  {informe.firma_digital && (
+                    <img src={informe.firma_digital} alt="Firma" style={{ height: '65px', borderBottom: '1px solid #333' }} />
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '1.25rem' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => window.print()} style={{ background: '#666', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                  🖨️ Imprimir Reporte
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowInformePreview(false)} style={{ background: '#333', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                  Cerrar Previsualización
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL: EDITAR REGISTRO HH */}
       {editingHh && (
