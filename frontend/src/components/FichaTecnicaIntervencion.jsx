@@ -45,6 +45,8 @@ export default function FichaTecnicaIntervencion({
     onCancel = null,
     otsList = [],
     personalList = [],
+    defaultWorkerId = '',
+    onWorkerChange = null,
     showToast = null
 }) {
     const [selectedOtId, setSelectedOtId] = useState(fixedOtId ? String(fixedOtId) : '');
@@ -138,11 +140,19 @@ export default function FichaTecnicaIntervencion({
         }
     };
 
+    useEffect(() => {
+        if (defaultWorkerId) {
+            setForm(prev => ({ ...prev, tecnico_id: String(defaultWorkerId) }));
+        }
+    }, [defaultWorkerId]);
+
     const hydrateFormFromReport = (rep) => {
         const todayStr = new Date().toISOString().split('T')[0];
+        const savedWorker = defaultWorkerId || localStorage.getItem('trimec_operador_trabajador_id') || '';
         if (!rep || !rep.id) {
             setForm({
                 ...initialFormState,
+                tecnico_id: savedWorker ? String(savedWorker) : '',
                 fecha_inicio: todayStr,
                 fecha_fin: todayStr,
                 horas_mano_obra: {
@@ -178,9 +188,9 @@ export default function FichaTecnicaIntervencion({
             },
             causa_raiz: rep.causa_raiz || '',
             estado_equipo: rep.estado_equipo || 'Operativo',
-            tecnico_id: rep.tecnico_id ? String(rep.tecnico_id) : '',
+            tecnico_id: savedWorker ? String(savedWorker) : (rep.tecnico_id ? String(rep.tecnico_id) : ''),
             horas_mano_obra: {
-                fecha_dia: parsedHh.fecha_dia || todayStr,
+                fecha_dia: todayStr,
                 horas_normales: parsedHh.horas_normales !== undefined ? String(parsedHh.horas_normales) : '8',
                 horas_extra: parsedHh.horas_extra !== undefined ? String(parsedHh.horas_extra) : '0',
                 ubicacion: parsedHh.ubicacion || 'Terreno'
@@ -492,6 +502,18 @@ export default function FichaTecnicaIntervencion({
             notify('Error al registrar horas: ' + err.message, 'error');
         } finally {
             setSavingHhOnly(false);
+        }
+    };
+
+    const handleDeleteHhRecord = async (hhId) => {
+        const targetOtId = fixedOtId || selectedOtId;
+        if (!window.confirm('¿Eliminar este registro de horas de la OT?')) return;
+        try {
+            await api(`/hh/${hhId}`, { method: 'DELETE' });
+            notify('🗑️ Registro de horas eliminado', 'info');
+            if (targetOtId) await loadOtHh(targetOtId);
+        } catch (err) {
+            notify('No se pudo eliminar: ' + err.message, 'error');
         }
     };
 
@@ -1052,13 +1074,20 @@ export default function FichaTecnicaIntervencion({
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', alignItems: 'flex-end' }}>
                         <div>
-                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Técnico Ejecutor *</label>
+                            <label className="form-label" style={{ fontSize: '0.78rem' }}>Técnico / Operario Ejecutor *</label>
                             <select
                                 className="form-input"
                                 value={form.tecnico_id}
-                                onChange={e => setForm({ ...form, tecnico_id: e.target.value })}
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setForm({ ...form, tecnico_id: val });
+                                    if (onWorkerChange) onWorkerChange(val);
+                                    if (val) {
+                                        localStorage.setItem('trimec_operador_trabajador_id', String(val));
+                                    }
+                                }}
                             >
-                                <option value="">-- Seleccionar Técnico --</option>
+                                <option value="">-- Seleccionar mi nombre --</option>
                                 {personal.map(p => (
                                     <option key={p.id} value={p.id}>{p.nombre} ({p.especialidad || p.rol})</option>
                                 ))}
@@ -1140,7 +1169,7 @@ export default function FichaTecnicaIntervencion({
                             <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.4rem' }}>
                                 📋 Horas trabajadas ya registradas en esta OT ({otHhList.length} jornada{otHhList.length === 1 ? '' : 's'}):
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '140px', overflowY: 'auto' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '160px', overflowY: 'auto' }}>
                                 {otHhList.map(h => (
                                     <div
                                         key={h.id}
@@ -1151,7 +1180,7 @@ export default function FichaTecnicaIntervencion({
                                             flexWrap: 'wrap',
                                             gap: '0.5rem',
                                             background: 'rgba(255,255,255,0.03)',
-                                            padding: '0.35rem 0.65rem',
+                                            padding: '0.4rem 0.65rem',
                                             borderRadius: '6px',
                                             fontSize: '0.8rem'
                                         }}
@@ -1159,9 +1188,27 @@ export default function FichaTecnicaIntervencion({
                                         <span>
                                             📅 <strong>{h.fecha}</strong> — 👷 <strong>{h.trabajador_nombre}</strong> ({h.ubicacion || 'Terreno'})
                                         </span>
-                                        <span style={{ color: '#34d399', fontWeight: 700 }}>
-                                            {h.horas_normales}h Normales {parseFloat(h.horas_extra) > 0 ? `+ ${h.horas_extra}h Extra` : ''}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                            <span style={{ color: '#34d399', fontWeight: 700 }}>
+                                                {h.horas_normales}h Normales {parseFloat(h.horas_extra) > 0 ? `+ ${h.horas_extra}h Extra` : ''}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteHhRecord(h.id)}
+                                                style={{
+                                                    background: 'rgba(239, 68, 68, 0.15)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                                                    color: '#f87171',
+                                                    borderRadius: '5px',
+                                                    padding: '0.15rem 0.45rem',
+                                                    fontSize: '0.72rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                                title="Eliminar este registro de horas"
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

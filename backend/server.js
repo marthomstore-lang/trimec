@@ -308,6 +308,10 @@ app.delete('/api/usuarios/:id', authenticate, checkRole(['admin']), async (req, 
 // --- TRABAJADORES ROUTES ---
 app.get('/api/trabajadores', authenticate, async (req, res) => {
   try {
+    if (req.user?.rol === 'operador') {
+      const workers = await query('SELECT id, nombre, rol FROM trabajadores ORDER BY nombre ASC');
+      return res.json(workers);
+    }
     const workers = await query('SELECT * FROM trabajadores ORDER BY nombre ASC');
     res.json(workers);
   } catch (error) {
@@ -684,13 +688,23 @@ app.get('/api/hh', authenticate, async (req, res) => {
 app.get('/api/hh/ot/:ot_id', authenticate, async (req, res) => {
   const { ot_id } = req.params;
   try {
+    if (req.user?.rol === 'operador') {
+      const hhRecords = await query(`
+        SELECT r.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol
+        FROM registro_hh r
+        JOIN trabajadores t ON r.trabajador_id = t.id
+        WHERE r.ot_id = ?
+        ORDER BY r.fecha DESC, r.id DESC
+      `, [ot_id]);
+      return res.json(hhRecords);
+    }
     const hhRecords = await query(`
       SELECT r.*, t.nombre as trabajador_nombre, t.rol as trabajador_rol,
              ((r.horas_normales * t.valor_hh_normal) + (r.horas_extra * t.valor_hh_extra)) as costo_calculado
       FROM registro_hh r
       JOIN trabajadores t ON r.trabajador_id = t.id
       WHERE r.ot_id = ?
-      ORDER BY r.fecha DESC
+      ORDER BY r.fecha DESC, r.id DESC
     `, [ot_id]);
     res.json(hhRecords);
   } catch (error) {
@@ -751,7 +765,7 @@ app.put('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor', 'operador
   }
 });
 
-app.delete('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor']), async (req, res) => {
+app.delete('/api/hh/:id', authenticate, checkRole(['admin', 'supervisor', 'operador']), async (req, res) => {
   const { id } = req.params;
   try {
     const rec = await get('SELECT ot_id FROM registro_hh WHERE id = ?', [id]);

@@ -5,6 +5,9 @@ import FichaTecnicaIntervencion from './FichaTecnicaIntervencion';
 const DashboardOperador = ({ initialOtId = '', showToast }) => {
   const [ots, setOts] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState(() => {
+    return localStorage.getItem('trimec_operador_trabajador_id') || '';
+  });
   const [selectedOtId, setSelectedOtId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return initialOtId || params.get('ot') || params.get('terreno_ot') || localStorage.getItem('trimec_operador_ot') || '';
@@ -44,6 +47,16 @@ const DashboardOperador = ({ initialOtId = '', showToast }) => {
     document.title = 'Trimec - Portal Técnico';
   }, []);
 
+  const handleSelectWorker = (workerId) => {
+    const strId = workerId ? String(workerId) : '';
+    setSelectedWorkerId(strId);
+    if (strId) {
+      localStorage.setItem('trimec_operador_trabajador_id', strId);
+    } else {
+      localStorage.removeItem('trimec_operador_trabajador_id');
+    }
+  };
+
   const handleChooseOt = (id) => {
     const strId = id ? String(id) : '';
     setSelectedOtId(strId);
@@ -74,6 +87,7 @@ const DashboardOperador = ({ initialOtId = '', showToast }) => {
   }
 
   const selectedOt = ots.find(o => String(o.id) === String(selectedOtId));
+  const activeWorker = workers.find(w => String(w.id) === String(selectedWorkerId));
 
   const filteredOts = ots.filter(o => {
     const q = searchTerm.toLowerCase().trim();
@@ -89,6 +103,48 @@ const DashboardOperador = ({ initialOtId = '', showToast }) => {
   return (
     <div className="container-fluid py-3" style={{ maxWidth: '1050px', margin: '0 auto' }}>
       {error && <div className="alert alert-danger mb-3">{error}</div>}
+
+      {/* BARRA FIJA SUPERIOR: SELECCIÓN DE NOMBRE DEL OPERARIO (SIN MOSTRAR VALORES NI COSTOS) */}
+      <div
+        className="panel-card"
+        style={{
+          padding: '0.9rem 1.2rem',
+          marginBottom: '1.25rem',
+          borderLeft: selectedWorkerId ? '4px solid #10b981' : '4px solid #f59e0b',
+          background: selectedWorkerId
+            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.95))'
+            : 'linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(15, 23, 42, 0.95))',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.85rem'
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: selectedWorkerId ? '#34d399' : '#fbbf24' }}>
+            👷 {activeWorker ? `Operario activo: ${activeWorker.nombre} (${activeWorker.rol})` : 'Paso 1: Selecciona tu Nombre de Operario / Técnico'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+            Tu selección queda guardada en este teléfono para registrar tus horas trabajadas (HH) del día en cada OT.
+          </div>
+        </div>
+        <div style={{ minWidth: '250px', flex: '0 1 320px' }}>
+          <select
+            className="form-input"
+            style={{ fontWeight: 600, borderColor: selectedWorkerId ? '#10b981' : '#f59e0b' }}
+            value={selectedWorkerId}
+            onChange={e => handleSelectWorker(e.target.value)}
+          >
+            <option value="">-- Seleccionar mi nombre --</option>
+            {workers.map(w => (
+              <option key={w.id} value={w.id}>
+                {w.nombre} — {w.rol}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* VISTA 1: SI NO HA SELECCIONADO OT, MOSTRAR EL LISTADO DE OTs ACTIVAS */}
       {!selectedOt ? (
@@ -258,6 +314,8 @@ const DashboardOperador = ({ initialOtId = '', showToast }) => {
             fixedOtId={selectedOt.id}
             otsList={ots}
             personalList={workers}
+            defaultWorkerId={selectedWorkerId}
+            onWorkerChange={handleSelectWorker}
             showToast={showToast}
             onSaved={() => fetchData()}
           />
