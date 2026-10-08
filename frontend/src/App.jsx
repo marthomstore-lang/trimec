@@ -46,14 +46,22 @@ function App() {
 
   // Sincronizar URL inicial y escuchar navegación atrás/adelante del navegador
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wantsOperatorPortal = params.get('portal') === 'operador' || params.get('modo') === 'operador';
+
     const token = localStorage.getItem('trimec_token');
     const savedUser = localStorage.getItem('trimec_user');
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
+      const parsedUser = JSON.parse(savedUser);
+      if (wantsOperatorPortal && parsedUser.rol !== 'operador') {
+        localStorage.removeItem('trimec_token');
+        localStorage.removeItem('trimec_user');
+      } else {
+        setUser(parsedUser);
+      }
     }
 
     // Asegurar que la URL refleje el estado inicial restaurado
-    const params = new URLSearchParams(window.location.search);
     if (selectedOtId && !params.get('ot')) {
       params.set('ot', selectedOtId);
       window.history.replaceState({ otId: selectedOtId }, '', `${window.location.pathname}?${params.toString()}`);

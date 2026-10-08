@@ -2357,8 +2357,8 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
           `🛠️ *DESCRIPCIÓN TÉCNICA DE LOS TRABAJOS:*\n${ot.detalle || 'Sin detalle especificado'}`,
           `----------------------------------------`,
           ot.notas_presupuesto ? `📝 *NOTAS E INSTRUCCIONES DE FAENA:*\n${ot.notas_presupuesto}\n----------------------------------------` : '',
-          `📲 *ENLACE DE REGISTRO DE TERRENO (Kilometraje, Combustible, Fotos e Insumos):*`,
-          `${window.location.origin}/?ot=${ot.id}&terreno=true`,
+          `📲 *ENLACE DIRECTO PARA TÉCNICOS / OPERADORES (Ficha de Intervención y Horas HH):*`,
+          `${window.location.origin}/?ot=${ot.id}&portal=operador`,
           `========================================`
         ].filter(Boolean).join('\n');
 
@@ -2373,7 +2373,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
               </div>
 
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                A continuación se presenta la <strong>ficha técnica completa de la OT {ot.id}</strong>. Al enviar por WhatsApp o copiar, se incluirán todos los detalles del trabajo, cliente, faena, notas y el enlace directo para registrar gastos y kilometraje.
+                A continuación se presenta la <strong>ficha técnica completa de la OT {ot.id}</strong>. Al enviar por WhatsApp o copiar, el técnico recibirá el enlace directo para ingresar a esta OT, completar la Ficha de Intervención Técnica y registrar sus horas trabajadas del día.
               </p>
 
               <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
@@ -2431,7 +2431,7 @@ const OtDetail = ({ otId, onBack, onOpenTerreno, userRole, showToast }) => {
                     type="button" 
                     className="btn btn-secondary" 
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/?ot=${ot.id}&terreno=true`);
+                      navigator.clipboard.writeText(`${window.location.origin}/?ot=${ot.id}&portal=operador`);
                       showToast('🔗 Enlace directo copiado al portapapeles', 'success');
                     }}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.85rem' }}

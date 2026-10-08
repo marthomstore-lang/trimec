@@ -632,8 +632,18 @@ export const initDb = async () => {
       VALUES 
       ('Angelo Muñoz V.', 'angelo@trimec.cl', ?, 'admin'),
       ('Supervisor Operaciones', 'supervisor@trimec.cl', ?, 'supervisor'),
-      ('Contador Finanzas', 'contador@trimec.cl', ?, 'contador')
-    `, [hashedPwd, hashedPwd, hashedPwd]);
+      ('Contador Finanzas', 'contador@trimec.cl', ?, 'contador'),
+      ('Técnico / Operador', 'operador@trimec.cl', ?, 'operador')
+    `, [hashedPwd, hashedPwd, hashedPwd, hashedPwd]);
+  } else {
+    const opExists = await get(`SELECT id FROM usuarios WHERE email = ?`, ['operador@trimec.cl']);
+    if (!opExists) {
+      const hashedPwd = await bcrypt.hash('trimec123', 10);
+      await run(
+        `INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES ('Técnico / Operador', 'operador@trimec.cl', ?, 'operador')`,
+        [hashedPwd]
+      );
+    }
   }
 
   // Sembrar trabajadores

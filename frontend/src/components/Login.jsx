@@ -10,6 +10,10 @@ const Login = ({ onLoginSuccess }) => {
 
   useEffect(() => {
     document.title = 'Trimec - Acceso al Sistema';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'operador' || params.get('modo') === 'operador') {
+      handleQuickLogin('operador@trimec.cl');
+    }
   }, []);
 
   const getFriendlyErrorMessage = (msg) => {
@@ -155,6 +159,14 @@ const Login = ({ onLoginSuccess }) => {
             ACCESO RÁPIDO PARA PRUEBAS (Contraseña: trimec123)
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              style={{ background: 'linear-gradient(135deg, #2563eb, #10b981)', border: 'none', fontWeight: 700, padding: '0.55rem' }}
+              onClick={() => handleQuickLogin('operador@trimec.cl')}
+            >
+              👷 Entrar como Técnico / Operador (OTs y Horas)
+            </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleQuickLogin('angelo@trimec.cl')}>
               🔑 Entrar como Angelo Muñoz (Admin)
             </button>
