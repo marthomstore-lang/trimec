@@ -704,7 +704,6 @@ const ModuloTerrenoOffline = ({ initialOtId = '', onBack, showToast }) => {
               <input 
                 type="file" 
                 accept="image/*" 
-                capture="environment" 
                 ref={cameraInputRef} 
                 style={{ display: 'none' }} 
                 onChange={handlePhotoCapture} 

@@ -356,6 +356,129 @@ app.delete('/api/trabajadores/:id', authenticate, checkRole(['admin']), async (r
   }
 });
 
+// --- CLAUDIA AI (META AI) WEBHOOK ---
+app.post('/api/claudia', async (req, res) => {
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+  const expectedKey = process.env.CLAUDIA_API_KEY;
+
+  if (!expectedKey) {
+    return res.status(500).json({
+      error: 'CLAUDIA_API_KEY no está configurada en las variables de entorno de Vercel.'
+    });
+  }
+
+  if (apiKey !== expectedKey) {
+    return res.status(401).json({ error: 'Unauthorized: API Key inválida para Claudia' });
+  }
+
+  const { tipo = 'OT', cliente, detalle, solicitado_por } = req.body;
+
+  if (!cliente || !detalle) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios: cliente y detalle' });
+  }
+
+  try {
+    // 1. Resolver Cliente
+    let clientRecord = await get(`
+      SELECT * FROM clientes 
+      WHERE LOWER(razon_social) LIKE ? OR LOWER(prefijo) LIKE ?
+      LIMIT 1
+    `, [`%${cliente.toLowerCase().trim()}%`, `%${cliente.toLowerCase().trim()}%`]);
+
+    if (!clientRecord) {
+      const cleanName = cliente.trim();
+      const prefix = cleanName.slice(0, 3).toUpperCase() || 'CLI';
+      const existingPref = await get('SELECT id FROM clientes WHERE prefijo = ?', [prefix]);
+      const finalPrefix = existingPref ? `${prefix}${Date.now().toString().slice(-2)}` : prefix;
+      const tempRut = `76.${Math.floor(100 + Math.random() * 899)}.${Math.floor(100 + Math.random() * 899)}-K`;
+      
+      const newClient = await run(
+        `INSERT INTO clientes (rut, razon_social, prefijo, contacto_nombre) VALUES (?, ?, ?, ?)`,
+        [tempRut, cleanName, finalPrefix, solicitado_por || 'Claudia - Meta AI']
+      );
+      clientRecord = { id: newClient.id, prefijo: finalPrefix, razon_social: cleanName };
+    }
+
+    // 2. Determinar correlativo y formato
+    const isSp = String(tipo).toUpperCase() === 'SP';
+    const estado = isSp ? 'SP' : 'En Proceso';
+
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(-2);
+    const datePrefix = `${dd}${mm}${yy}`;
+    const prefixToUse = (clientRecord.prefijo || (isSp ? 'SP' : 'OT')).trim().toUpperCase();
+
+    const ots = await query(`SELECT id FROM ordenes_trabajo`);
+    let maxSeq = 0;
+    const regex = new RegExp(`${datePrefix}\\.(\\d+)`);
+    if (ots && ots.length > 0) {
+      for (const ot of ots) {
+        const match = ot.id.toString().match(regex);
+        if (match) {
+          const seqVal = parseInt(match[1], 10);
+          if (!isNaN(seqVal) && seqVal > maxSeq) {
+            maxSeq = seqVal;
+          }
+        }
+      }
+    }
+    let nextSeq = maxSeq + 1;
+    let proposedId = `${prefixToUse}-${datePrefix}.${nextSeq}`;
+    let exists = true;
+    while (exists) {
+      const existing = await get('SELECT id FROM ordenes_trabajo WHERE id = ?', [proposedId]);
+      if (existing) {
+        nextSeq++;
+        proposedId = `${prefixToUse}-${datePrefix}.${nextSeq}`;
+      } else {
+        exists = false;
+      }
+    }
+
+    const todayStr = `${today.getFullYear()}-${mm}-${dd}`;
+    const desc = detalle.trim();
+
+    // 3. Crear carpeta de Drive si está configurado
+    let driveFolderUrl = null;
+    try {
+      const folderName = `OT ${proposedId} - ${clientRecord.razon_social}`.trim();
+      driveFolderUrl = await createDriveFolder(folderName);
+    } catch (e) {
+      console.warn('No se pudo crear carpeta en Drive para Claudia:', e.message);
+    }
+
+    // 4. Insertar en ordenes_trabajo
+    await run(`
+      INSERT INTO ordenes_trabajo 
+      (id, cliente_id, usuario_id, detalle, estado, es_emergencia, recargo_emergencia, fecha_solicitud, monto_neto_presupuesto, hh_presupuestadas, drive_folder_url)
+      VALUES (?, ?, 1, ?, ?, 0, 0.0, ?, 0.0, 0.0, ?)
+    `, [proposedId, clientRecord.id, desc, estado, todayStr, driveFolderUrl]);
+
+    // 5. Facturación registro inicial
+    await run('INSERT INTO facturacion (ot_id) VALUES (?) ON CONFLICT DO NOTHING', [proposedId]);
+
+    res.status(201).json({
+      ok: true,
+      mensaje: `${isSp ? 'SP' : 'OT'} #${proposedId} creada exitosamente`,
+      ot: {
+        id: proposedId,
+        tipo: isSp ? 'SP' : 'OT',
+        estado,
+        cliente: clientRecord.razon_social,
+        detalle: desc,
+        fecha: todayStr,
+        drive_folder_url: driveFolderUrl,
+        creado_por: solicitado_por || 'Claudia - Meta AI'
+      }
+    });
+  } catch (error) {
+    console.error('Error en /api/claudia:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // --- OTS ROUTES ---
 app.get('/api/ots/siguiente-numero', authenticate, async (req, res) => {
@@ -435,9 +558,9 @@ app.get('/api/ots', authenticate, async (req, res) => {
           WHERE r.ot_id = ?
         `, [ot.id]);
 
-        // Costo Gastos Diarios
+        // Costo Gastos Diarios (Total con IVA)
         const expenseCost = await get(`
-          SELECT SUM(valor_neto) as total 
+          SELECT COALESCE(SUM(valor_total), 0) as total 
           FROM gastos_diarios 
           WHERE ot_id = ?
         `, [ot.id]);
@@ -493,7 +616,7 @@ app.get('/api/ots/:id', authenticate, async (req, res) => {
     `, [id]);
 
     const expenseCost = await get(`
-      SELECT SUM(valor_neto) as total 
+      SELECT COALESCE(SUM(valor_total), 0) as total 
       FROM gastos_diarios 
       WHERE ot_id = ?
     `, [id]);
@@ -1136,9 +1259,9 @@ app.get('/api/finanzas/flujo-caja', authenticate, checkRole(['admin', 'contador'
       GROUP BY mes
     `);
 
-    // 3. Egresos Variables de OTs (Materiales y Comidas de OTs)
+    // 3. Egresos Variables de OTs (Materiales y Comidas de OTs con IVA)
     const egresosOTs = await query(`
-      SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_neto) as total_egreso_ot
+      SELECT SUBSTR(fecha, 1, 7) as mes, COALESCE(SUM(valor_total), 0) as total_egreso_ot
       FROM gastos_diarios
       GROUP BY mes
     `);
@@ -1370,7 +1493,7 @@ app.get('/api/finanzas/flujo-caja/pdf', authenticate, checkRole(['admin', 'conta
       GROUP BY mes
     `);
     const egresosFijos = await query(`SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_total) as total_egreso_fijo FROM gastos_generales GROUP BY mes`);
-    const egresosOTs = await query(`SELECT SUBSTR(fecha, 1, 7) as mes, SUM(valor_neto) as total_egreso_ot FROM gastos_diarios GROUP BY mes`);
+    const egresosOTs = await query(`SELECT SUBSTR(fecha, 1, 7) as mes, COALESCE(SUM(valor_total), 0) as total_egreso_ot FROM gastos_diarios GROUP BY mes`);
     const flujoMensual = {};
     ingresos.forEach(item => { if (item.mes) flujoMensual[item.mes] = { mes: item.mes, ingresos: item.total_ingreso || 0, egresos: 0 }; });
     egresosFijos.forEach(item => { if (item.mes) { if (!flujoMensual[item.mes]) flujoMensual[item.mes] = { mes: item.mes, ingresos: 0, egresos: 0 }; flujoMensual[item.mes].egresos += item.total_egreso_fijo || 0; } });

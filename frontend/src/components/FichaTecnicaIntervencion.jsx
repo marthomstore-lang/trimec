@@ -286,7 +286,7 @@ export default function FichaTecnicaIntervencion({
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const maxDim = 1280;
+                    const maxDim = 1000;
                     let width = img.width;
                     let height = img.height;
                     if (width > maxDim || height > maxDim) {
@@ -302,7 +302,7 @@ export default function FichaTecnicaIntervencion({
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    resolve(canvas.toDataURL('image/jpeg', 0.65));
                 };
                 img.onerror = () => resolve(event.target.result);
                 img.src = event.target.result;
@@ -524,14 +524,13 @@ export default function FichaTecnicaIntervencion({
             notify('Debe seleccionar una Orden de Trabajo (OT)', 'warning');
             return;
         }
-        if (!form.despues_tareas.trim()) {
-            notify('Debe ingresar la descripción de la actividad ejecutada', 'warning');
-            return;
-        }
+
+        const finalDespues = form.despues_tareas.trim() || 'Intervención técnica ejecutada según requerimiento de la OT';
 
         setSaving(true);
         const payload = {
             ...form,
+            despues_tareas: finalDespues,
             tecnico_id: form.tecnico_id ? parseInt(form.tecnico_id, 10) : null
         };
 
@@ -555,22 +554,29 @@ export default function FichaTecnicaIntervencion({
                 body: JSON.stringify(payload)
             });
 
-            notify('✅ Informe de Mantención, Horas Trabajadas del Día y Fotos en Drive guardados con éxito', 'success');
+            notify('✅ Informe de Mantención, Horas Trabajadas del Día y Fotos guardados con éxito', 'success');
             if (data && data.report) {
                 hydrateFormFromReport(data.report);
             }
             await loadOtHh(targetOtId);
             if (onSaved) onSaved((data && data.report) || payload);
         } catch (error) {
-            await saveOfflineItem({
-                type: 'INFORME_TECNICO',
-                endpoint: `/informes/ot/${targetOtId}`,
-                method: 'POST',
-                payload,
-                label: `Ficha Técnica OT #${targetOtId} (${form.tipo_mantenimiento})`
-            });
-            notify('📦 Red inestable o error de conexión: Ficha Técnica guardada localmente para sincronizar.', 'info');
-            if (onSaved) onSaved(payload);
+            const errStr = (error.message || '').toLowerCase();
+            const isNetworkError = errStr.includes('network') || errStr.includes('failed to fetch') || !navigator.onLine;
+
+            if (isNetworkError) {
+                await saveOfflineItem({
+                    type: 'INFORME_TECNICO',
+                    endpoint: `/informes/ot/${targetOtId}`,
+                    method: 'POST',
+                    payload,
+                    label: `Ficha Técnica OT #${targetOtId} (${form.tipo_mantenimiento})`
+                });
+                notify('📦 Sin conexión: Ficha Técnica guardada localmente para sincronizar al volver a tener señal.', 'info');
+                if (onSaved) onSaved(payload);
+            } else {
+                notify('❌ Error al guardar ficha: ' + (error.message || 'Error en el servidor'), 'error');
+            }
         } finally {
             setSaving(false);
         }
@@ -783,13 +789,12 @@ export default function FichaTecnicaIntervencion({
                             <span className="badge badge-warning">{form.fotos_antes.length} foto(s)</span>
                         </div>
                         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0' }}>
-                            Estado inicial del equipo antes de intervenir. Se guardará en la carpeta Drive de la OT.
+                            Estado inicial del equipo antes de intervenir (puedes tomar fotos con la cámara o seleccionar de tu galería).
                         </p>
                         <input
                             type="file"
                             accept="image/*"
                             multiple
-                            capture="environment"
                             onChange={e => handlePhotoUpload(e, 'fotos_antes')}
                             className="form-input"
                             style={{ fontSize: '0.82rem', padding: '0.45rem' }}
@@ -830,13 +835,12 @@ export default function FichaTecnicaIntervencion({
                             <span className="badge badge-success">{form.fotos_despues.length} foto(s)</span>
                         </div>
                         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0' }}>
-                            Resultado final del equipo tras la intervención. Se guardará en la carpeta Drive de la OT.
+                            Resultado final del equipo tras la intervención (puedes tomar fotos con la cámara o seleccionar de tu galería).
                         </p>
                         <input
                             type="file"
                             accept="image/*"
                             multiple
-                            capture="environment"
                             onChange={e => handlePhotoUpload(e, 'fotos_despues')}
                             className="form-input"
                             style={{ fontSize: '0.82rem', padding: '0.45rem' }}

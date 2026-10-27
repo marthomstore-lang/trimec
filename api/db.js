@@ -210,6 +210,9 @@ export const initDb = async () => {
       ALTER TABLE usuarios ADD CONSTRAINT usuarios_rol_check CHECK(rol IN ('admin', 'supervisor', 'contador', 'operador'));
     `).catch(err => console.log('Error updating usuarios_rol_check in postgres:', err.message));
     await pgPool.query(`
+      ALTER TABLE gastos_diarios DROP CONSTRAINT IF EXISTS gastos_diarios_clasificacion_check;
+    `).catch(err => console.log('Error dropping gastos_diarios_clasificacion_check in postgres:', err.message));
+    await pgPool.query(`
       ALTER TABLE gastos_diarios ADD COLUMN IF NOT EXISTS foto_boleta TEXT;
     `).catch(err => console.log('Error adding foto_boleta to postgres:', err.message));
     await pgPool.query(`
@@ -466,7 +469,7 @@ export const initDb = async () => {
       id SERIAL PRIMARY KEY,
       ot_id TEXT NOT NULL,
       fecha TEXT NOT NULL,
-      clasificacion TEXT NOT NULL CHECK(clasificacion IN ('INSUMOS', 'Almuerzo', 'Plotteo', 'Peaje', 'Combustible', 'Otros')),
+      clasificacion TEXT NOT NULL,
       detalle TEXT NOT NULL,
       cantidad REAL NOT NULL DEFAULT 1.0,
       valor_neto REAL NOT NULL DEFAULT 0.0,
